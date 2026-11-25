@@ -1,7 +1,7 @@
 # compiled output
-/employee-training-backend/dist
-/employee-training-backend/node_modules
-/employee-training-backend/build
+/dist
+/node_modules
+/build
 
 # TypeScript build cache
 *.tsbuildinfo
@@ -19,7 +19,7 @@ lerna-debug.log*
 .DS_Store
 
 # Tests
-/employee-training-backend/coverage
+/coverage
 /.nyc_output
 
 # IDEs and editors
