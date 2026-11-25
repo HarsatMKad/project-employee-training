@@ -1,0 +1,33 @@
+services:
+    database:
+        image: postgres:16
+        environment:
+            POSTGRES_DB: employee_training
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        networks:
+            - app-network
+
+    backend:
+        build: ./employee-training-backend
+        ports:
+            - '3001:3001'
+        networks:
+            - app-network
+        depends_on:
+            - database
+
+    frontend:
+        build: ./employee-training-frontend
+        ports:
+            - '3000:3000'
+        networks:
+            - app-network
+        depends_on:
+            - backend
+
+networks:
+    app-network:
+        driver: bridge
