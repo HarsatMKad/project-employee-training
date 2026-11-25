@@ -1,4 +1,5 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync, SQLInputValue } from 'node:sqlite';
@@ -62,7 +63,9 @@ export class DatabaseService implements OnModuleDestroy {
         name TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('creator', 'employee'))
+        role TEXT NOT NULL CHECK (role IN ('creator', 'employee')),
+        department TEXT NOT NULL DEFAULT 'отдел1',
+        company_role TEXT NOT NULL DEFAULT 'сотрудник'
       );
       CREATE TABLE IF NOT EXISTS skills (
         id TEXT PRIMARY KEY,
@@ -146,6 +149,19 @@ export class DatabaseService implements OnModuleDestroy {
         UNIQUE (user_id, skill_id)
       );
     `);
+    const userColumns = this.database
+      .prepare('PRAGMA table_info(users)')
+      .all() as Array<{ name: string }>;
+    if (!userColumns.some((column) => column.name === 'department')) {
+      this.database.exec(
+        "ALTER TABLE users ADD COLUMN department TEXT NOT NULL DEFAULT 'отдел1'",
+      );
+    }
+    if (!userColumns.some((column) => column.name === 'company_role')) {
+      this.database.exec(
+        "ALTER TABLE users ADD COLUMN company_role TEXT NOT NULL DEFAULT 'сотрудник'",
+      );
+    }
     this.database.exec(`
       INSERT OR IGNORE INTO course_skills (course_id, skill_id)
       SELECT id, skill_id FROM courses WHERE skill_id IS NOT NULL;
@@ -172,6 +188,56 @@ export class DatabaseService implements OnModuleDestroy {
         name: 'Иван Петров',
         role: 'employee',
         password: 'Demo123!',
+        department: 'отдел1',
+        companyRole: 'сотрудник',
+      },
+      {
+        id: 'demo-employee-2',
+        email: 'maria.sokolova@demo.local',
+        name: 'Мария Соколова',
+        role: 'employee',
+        department: 'отдел1',
+        companyRole: 'тимлид',
+      },
+      {
+        id: 'demo-employee-3',
+        email: 'pavel.orlov@demo.local',
+        name: 'Павел Орлов',
+        role: 'employee',
+        department: 'отдел2',
+        companyRole: 'сотрудник',
+      },
+      {
+        id: 'demo-employee-4',
+        email: 'elena.lebedeva@demo.local',
+        name: 'Елена Лебедева',
+        role: 'employee',
+        department: 'отдел2',
+        companyRole: 'тимлид',
+      },
+      {
+        id: 'demo-employee-5',
+        email: 'artem.volkov@demo.local',
+        name: 'Артём Волков',
+        role: 'employee',
+        department: 'отдел3',
+        companyRole: 'сотрудник',
+      },
+      {
+        id: 'demo-employee-6',
+        email: 'olga.fedorova@demo.local',
+        name: 'Ольга Фёдорова',
+        role: 'employee',
+        department: 'отдел3',
+        companyRole: 'тимлид',
+      },
+      {
+        id: 'demo-employee-7',
+        email: 'nikita.morozov@demo.local',
+        name: 'Никита Морозов',
+        role: 'employee',
+        department: 'отдел1',
+        companyRole: 'сотрудник',
       },
     ] as const;
 
@@ -183,19 +249,31 @@ export class DatabaseService implements OnModuleDestroy {
       const exists = this.get('SELECT id FROM users WHERE email = ?', [user.email]);
       if (!exists) {
         this.run(
-          `INSERT INTO users (id, organization_id, name, email, password_hash, role)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO users
+           (id, organization_id, name, email, password_hash, role, department, company_role)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             user.id,
             organizationId,
             user.name,
             user.email,
-            hashPassword(user.password),
+            hashPassword(
+              'password' in user
+                ? user.password
+                : randomBytes(32).toString('hex'),
+            ),
             user.role,
+            'department' in user ? user.department : 'отдел1',
+            'companyRole' in user ? user.companyRole : 'сотрудник',
           ],
         );
       }
     }
+    this.run(
+      `UPDATE users SET department = ?, company_role = ?
+       WHERE id = 'demo-employee' AND organization_id = ?`,
+      ['отдел1', 'сотрудник', organizationId],
+    );
     if (!existingOrganization) {
       this.run(
         `INSERT OR IGNORE INTO skills (id, organization_id, name, description)

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import AppShell from './components/AppShell';
 import CreatorDashboard from './components/CreatorDashboard';
 import EmployeeDashboard from './components/EmployeeDashboard';
+import EmployeeDirectory from './components/EmployeeDirectory';
 import Icon from './components/Icon';
 import Login from './components/Login';
 import { request } from './utils/api';
@@ -9,6 +10,7 @@ import { request } from './utils/api';
 function App() {
   const [user, setUser] = useState(null);
   const [dashboard, setDashboard] = useState(null);
+  const [creatorWorkspace, setCreatorWorkspace] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -72,9 +74,16 @@ function App() {
   if (!user) return <Login onLogin={login} busy={loginBusy} error={loginError} />;
   if (!dashboard) return <div className="app-loading"><div className="loading-mark"><Icon name="layers" size={24} /></div><span>{dashboardError || 'Загружаем обучение…'}</span><button type="button" className="text-button" onClick={() => refresh()}>Повторить</button></div>;
 
-  return <AppShell user={user} onLogout={logout}>
+  return <AppShell
+    user={user}
+    activeWorkspace={creatorWorkspace}
+    onWorkspaceChange={setCreatorWorkspace}
+    onLogout={logout}
+  >
     {user.role === 'creator'
-      ? <CreatorDashboard dashboard={dashboard} refresh={refresh} setNotice={setNotice} />
+      ? creatorWorkspace === 'employees'
+        ? <EmployeeDirectory employees={dashboard.employees || []} />
+        : <CreatorDashboard dashboard={dashboard} refresh={refresh} setNotice={setNotice} />
       : <EmployeeDashboard dashboard={dashboard} refresh={refresh} setNotice={setNotice} />}
     {notice && <div className="toast"><span className="toast-check"><Icon name="check" size={16} /></span>{notice}</div>}
   </AppShell>;

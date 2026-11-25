@@ -26,6 +26,9 @@
 .badge { flex: 0 0 auto; padding: 4px 7px; border-radius: 5px; font-size: 8px; font-weight: 600; }
 .course-meta { display: flex; flex-wrap: wrap; gap: 12px; color: #839087; font-size: 9px; }
 .course-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.course-actions { margin-top: 11px; }
+.assign-course-button { min-height: 31px; padding: 0 10px; font-size: 9px; }
+.course-not-published { color: #a38a59; font-size: 9px; }
 .employee-result { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .mini-avatar { width: 25px; height: 25px; color: #4f6880; background: #edf2f7; border-radius: 50%; font-size: 8px; }
 .result-person { flex: 1; min-width: 0; }
@@ -97,3 +100,45 @@
 .delete-skill-button { flex: 0 0 auto; padding: 6px 9px; color: #a45b54; border: 1px solid #f0ddda; border-radius: 6px; background: #fffafa; font-size: 8px; }
 .delete-skill-button:hover:not(:disabled) { background: #fff0ee; }
 .skill-manager-empty { padding: 18px; color: #8f9a92; border: 1px dashed #e2e9e2; border-radius: 8px; text-align: center; font-size: 9px; }
+
+.employee-directory-count { display: inline-flex; align-items: center; gap: 8px; padding: 10px 12px; color: #4d745d; border: 1px solid #e1ebe2; border-radius: 8px; background: white; font-size: 10px; }
+.employee-filters { display: flex; flex-wrap: wrap; gap: 12px; padding: 14px; margin-bottom: 14px; border: 1px solid #e8ede8; border-radius: 10px; background: white; }
+.filter-field { display: grid; min-width: 160px; gap: 6px; color: #728078; font-size: 9px; font-weight: 600; }
+.filter-field select { min-height: 35px; padding: 0 10px; color: #35473c; border: 1px solid #dfe6e0; border-radius: 7px; background: white; font-size: 10px; }
+.employee-directory-list { display: grid; gap: 11px; }
+.employee-directory-card { padding: 16px 18px; border: 1px solid #e8ede8; border-radius: 11px; background: white; box-shadow: 0 4px 13px rgba(31,49,39,.025); }
+.employee-directory-heading { display: flex; align-items: center; gap: 11px; }
+.employee-directory-avatar { display: grid; width: 39px; height: 39px; flex: 0 0 auto; place-items: center; color: #466c56; border-radius: 50%; background: #eaf3ec; font-size: 11px; font-weight: 700; }
+.employee-directory-person { min-width: 0; }
+.employee-directory-person h2 { overflow: hidden; margin: 0 0 4px; font-family: Manrope, sans-serif; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.employee-directory-person > span { color: #8c9890; font-size: 9px; }
+.employee-directory-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.department-tag, .company-role-tag { padding: 5px 8px; color: #55735f; border-radius: 6px; background: #eff5ef; font-size: 8px; font-weight: 600; }
+.company-role-tag { color: #7765a4; background: #f1eef8; }
+.company-role-tag.team-lead { color: #8b6a3d; background: #faf2e5; }
+.employee-directory-skills { padding-top: 13px; margin-top: 13px; border-top: 1px solid #edf0ed; }
+.employee-directory-skills h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 9px; color: #64736a; font-size: 9px; font-weight: 600; }
+.employee-directory-skills h3 svg { color: #a78654; }
+.employee-confirmed-skills { display: flex; flex-wrap: wrap; gap: 7px; }
+.employee-confirmed-skill { display: grid; gap: 3px; padding: 7px 9px; border: 1px solid #e4eee5; border-radius: 7px; background: #f8fbf8; }
+.employee-confirmed-skill b { color: #3e6e4f; font-size: 9px; font-weight: 600; }
+.employee-confirmed-skill small { color: #8d9991; font-size: 8px; }
+.employee-no-skills { margin: 0; color: #98a29b; font-size: 9px; }
+.employee-directory-empty { min-height: 220px; }
+
+.dialog-backdrop { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: 20px; background: rgba(15,35,27,.44); }
+.assignment-dialog { width: min(100%, 520px); max-height: min(88vh, 680px); overflow: auto; padding: 22px; border: 1px solid #e3ebe3; border-radius: 13px; background: white; box-shadow: 0 22px 65px rgba(20,40,30,.22); }
+.assignment-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.assignment-dialog-heading h2 { margin: 6px 0 0; color: #23352a; font-family: Manrope, sans-serif; font-size: 16px; }
+.assignment-dialog-copy { margin: 10px 0 14px; color: #839087; font-size: 10px; }
+.assignment-dialog .employee-filters { padding: 10px; margin-bottom: 10px; }
+.assignment-dialog .filter-field { flex: 1; min-width: 130px; }
+.assignment-employee-list { display: grid; max-height: 250px; gap: 6px; overflow-y: auto; }
+.assignment-employee-option { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid #e8ede8; border-radius: 8px; background: #fcfdfc; cursor: pointer; }
+.assignment-employee-option.selected { border-color: #9dc5a6; background: #f2f8f3; }
+.assignment-employee-option input { width: 14px; height: 14px; margin: 0; accent-color: var(--green); }
+.assignment-employee-copy { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: space-between; gap: 12px; }
+.assignment-employee-copy b { overflow: hidden; color: #35483c; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.assignment-employee-copy small { flex: 0 0 auto; color: #89968e; font-size: 8px; }
+.assignment-empty { padding: 16px; color: #929e96; text-align: center; font-size: 9px; }
+.assignment-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; margin-top: 15px; border-top: 1px solid #edf0ed; }

@@ -48,6 +48,10 @@
   .builder-footer { align-items: stretch; flex-direction: column; }
   .builder-footer .button { width: 100%; }
   .employee-content-grid { grid-template-columns: 1fr; }
+  .employee-directory-heading { align-items: flex-start; flex-wrap: wrap; }
+  .employee-directory-tags { width: calc(100% - 50px); margin-left: 50px; }
+  .assignment-dialog { padding: 16px; }
+  .assignment-employee-copy { align-items: flex-start; flex-direction: column; gap: 4px; }
   .skills-panel { order: -1; }
   .employee-welcome { align-items: flex-start; }
   .learning-streak { width: 100%; }

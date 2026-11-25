@@ -50,12 +50,6 @@ function CourseBuilder({ dashboard, onComplete }) {
         }),
       });
       await request(`/courses/${created.id}/publish`, { method: 'POST' });
-      const employeeId = dashboard.employees?.[0]?.id;
-      if (!employeeId) throw new Error('В демо-компании нет сотрудника для назначения');
-      await request(`/courses/${created.id}/assign`, {
-        method: 'POST',
-        body: JSON.stringify({ employeeId }),
-      });
       await onComplete();
     } catch (requestError) {
       setError(requestError.message);
@@ -120,7 +114,7 @@ function CourseBuilder({ dashboard, onComplete }) {
         <button className="button button-quiet" type="button" onClick={addQuestion} disabled={questions.length >= MAX_QUESTIONS}><Icon name="plus" size={17} /> {questions.length >= MAX_QUESTIONS ? 'Достигнут лимит (40)' : 'Добавить вопрос'}</button>
       </div>
       {error && <div className="inline-error builder-error" role="alert">{error}</div>}
-      <div className="builder-footer"><span><Icon name="lock" size={16} /> Курс будет назначен Ивану Петрову</span><button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Публикуем…' : 'Опубликовать и назначить'} <Icon name="arrow" size={17} /></button></div>
+      <div className="builder-footer"><span><Icon name="lock" size={16} /> Курс будет опубликован без назначения сотрудникам</span><button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Публикуем…' : 'Опубликовать курс'} <Icon name="arrow" size={17} /></button></div>
     </form>
   );
 }

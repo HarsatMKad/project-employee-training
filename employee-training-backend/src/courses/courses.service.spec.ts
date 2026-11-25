@@ -1,4 +1,8 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { DatabaseService } from '../database/database.service.js';
 import { CoursesService } from './courses.service.js';
 import type { AuthUser } from '../security/security.js';
@@ -27,6 +31,77 @@ describe('course learning workflow', () => {
   });
 
   afterEach(() => database.onModuleDestroy());
+
+  it('adds employee metadata columns to an existing SQLite database', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'employee-training-migration-'));
+    const path = join(directory, 'legacy.sqlite');
+    const legacyDatabase = new DatabaseSync(path);
+    legacyDatabase.exec(`
+      CREATE TABLE organizations (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id),
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('creator', 'employee'))
+      );
+    `);
+    legacyDatabase.close();
+
+    const migratedDatabase = new DatabaseService(path);
+    try {
+      expect(migratedDatabase.get(
+        'SELECT department, company_role FROM users WHERE id = ?',
+        ['demo-employee'],
+      )).toMatchObject({
+        department: 'отдел1',
+        company_role: 'сотрудник',
+      });
+    } finally {
+      migratedDatabase.onModuleDestroy();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('seeds six employees across the three departments without exposing their skills prematurely', () => {
+    const employees = courses.listEmployees(creator);
+    const seededEmployees = employees.filter((item) => item.id !== employee.id);
+
+    expect(seededEmployees).toHaveLength(6);
+    expect(seededEmployees.map((item) => item.department).sort()).toEqual([
+      'отдел1',
+      'отдел1',
+      'отдел2',
+      'отдел2',
+      'отдел3',
+      'отдел3',
+    ]);
+    expect(seededEmployees.map((item) => item.companyRole).sort()).toEqual([
+      'сотрудник',
+      'сотрудник',
+      'сотрудник',
+      'тимлид',
+      'тимлид',
+      'тимлид',
+    ]);
+    expect(seededEmployees.every((item) => item.skills.length === 0)).toBe(true);
+
+    const course = courses.createCourse(creator, {
+      title: 'Вводный курс',
+      description: '',
+      skillIds: [],
+      passingScore: 70,
+      lessons: [{ title: 'Урок', content: 'Материал', videoUrl: null }],
+      questions: [{ prompt: 'Вопрос', options: ['Да', 'Нет'], correctOptionIndex: 0 }],
+    });
+    courses.publishCourse(creator, course.id);
+    const teamLead = seededEmployees.find((item) => item.companyRole === 'тимлид');
+    expect(teamLead).toBeDefined();
+    expect(courses.assignCourse(creator, course.id, teamLead?.id)).toMatchObject({
+      status: 'in_progress',
+    });
+  });
 
   it('allows at most forty questions in a course quiz', () => {
     const makeCourse = (questionCount: number) => ({
@@ -164,6 +239,15 @@ describe('course learning workflow', () => {
       expect.objectContaining({ id: 'demo-skill', name: 'Основы работы с клиентом' }),
       expect.objectContaining({ id: additionalSkill.id, name: 'Командная работа' }),
     ]));
+    expect(courses.listEmployees(creator).find((item) => item.id === employee.id))
+      .toMatchObject({
+        department: 'отдел1',
+        companyRole: 'сотрудник',
+        skills: expect.arrayContaining([
+          expect.objectContaining({ id: 'demo-skill' }),
+          expect.objectContaining({ id: additionalSkill.id }),
+        ]),
+      });
 
     courses.deleteSkill(creator, additionalSkill.id);
     expect(courses.dashboard(employee).skills).toEqual([

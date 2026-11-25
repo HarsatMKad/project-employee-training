@@ -14,6 +14,9 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
   const answerSaveQueue = useRef(Promise.resolve());
   const courses = dashboard.courses || [];
   const completed = courses.filter((item) => item.enrollment_status === 'completed').length;
+  const overallProgress = courses.length
+    ? Math.round((completed / courses.length) * 100)
+    : 0;
   const totalQuestions = courses.reduce((sum, item) => sum + Number(item.question_count || 0), 0);
   const answeredQuestions = courses.reduce((sum, item) => sum + Number(item.answered_count || 0), 0);
 
@@ -108,12 +111,12 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
           <h1>Добрый день, Иван <span className="wave">✦</span></h1>
           <p>Изучайте материалы в своём темпе и проходите итоговые тесты.</p>
         </div>
-        <div className="learning-streak"><span className="streak-icon">✳</span><span><b>Ваш прогресс</b><small>{answeredQuestions} из {totalQuestions} ответов в тестах</small></span></div>
+        <div className="learning-streak"><span className="streak-icon">✳</span><span><b>Ответы в тестах</b><small>{answeredQuestions} из {totalQuestions}</small></span></div>
       </div>
 
       <div className="employee-summary">
         <div className="summary-main"><div className="summary-icon"><Icon name="book" size={20} /></div><div><span>МОЁ ОБУЧЕНИЕ</span><b>{completed} <small>из</small> {courses.length} <small>курсов завершено</small></b></div></div>
-        <div className="summary-progress"><div className="progress-caption"><span>Общий прогресс по тестам</span><b>{totalQuestions ? Math.round((answeredQuestions / totalQuestions) * 100) : 0}%</b></div><div className="progress-track"><span style={{ width: `${totalQuestions ? (answeredQuestions / totalQuestions) * 100 : 0}%` }} /></div></div>
+        <div className="summary-progress"><div className="progress-caption"><span>Общий прогресс по курсам</span><b>{overallProgress}%</b></div><div className="progress-track"><span style={{ width: `${overallProgress}%` }} /></div></div>
         <div className="summary-decoration"><Icon name="spark" size={32} /></div>
       </div>
 

@@ -36,11 +36,15 @@ function CreatorDashboard({ dashboard, refresh, setNotice }) {
       </div>
 
       {tab === 'create' ? (
-        <CourseBuilder dashboard={dashboard} onComplete={async () => { await refresh(); setTab('overview'); setNotice('Курс опубликован и назначен сотруднику'); }} />
+        <CourseBuilder dashboard={dashboard} onComplete={async () => { await refresh(); setTab('overview'); setNotice('Курс опубликован'); }} />
       ) : tab === 'skills' ? (
         <SkillManager dashboard={dashboard} refresh={refresh} setNotice={setNotice} />
       ) : (
-        <CreatorCourseList courses={courses} />
+        <CreatorCourseList
+          courses={courses}
+          employees={dashboard.employees || []}
+          onAssigned={async () => { await refresh(); setNotice('Курс назначен сотруднику'); }}
+        />
       )}
     </div>
   );

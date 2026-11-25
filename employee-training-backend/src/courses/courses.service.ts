@@ -55,10 +55,24 @@ interface SkillRecord extends DatabaseRow {
   description: string;
 }
 
-interface EmployeeRecord extends DatabaseRow {
+interface EmployeeRecord {
   id: string;
   name: string;
   email: string;
+  department: string;
+  companyRole: string;
+  skills: Array<{ id: string; name: string; confirmedAt: string }>;
+}
+
+interface EmployeeSkillRow extends DatabaseRow {
+  id: string;
+  name: string;
+  email: string;
+  department: string;
+  company_role: string;
+  skill_id: string | null;
+  skill_name: string | null;
+  confirmed_at: string | null;
 }
 
 interface LessonInput {
@@ -281,11 +295,42 @@ export class CoursesService {
   }
 
   listEmployees(user: AuthUser): EmployeeRecord[] {
-    return this.database.all<EmployeeRecord>(
-      `SELECT id, name, email FROM users
-       WHERE organization_id = ? AND role = 'employee' ORDER BY name`,
+    const rows = this.database.all<EmployeeSkillRow>(
+      `SELECT u.id, u.name, u.email, u.department, u.company_role,
+              s.id AS skill_id, s.name AS skill_name, us.confirmed_at
+       FROM users u
+       LEFT JOIN user_skills us
+         ON us.user_id = u.id AND us.organization_id = u.organization_id
+         AND us.status = 'confirmed'
+       LEFT JOIN skills s ON s.id = us.skill_id
+         AND s.organization_id = us.organization_id
+       WHERE u.organization_id = ? AND u.role = 'employee'
+       ORDER BY u.name, s.name`,
       [user.organizationId],
     );
+    const employees = new Map<string, EmployeeRecord>();
+    rows.forEach((row) => {
+      let employee = employees.get(row.id);
+      if (!employee) {
+        employee = {
+          id: row.id,
+          name: row.name,
+          email: row.email,
+          department: row.department,
+          companyRole: row.company_role,
+          skills: [],
+        };
+        employees.set(row.id, employee);
+      }
+      if (row.skill_id && row.skill_name && row.confirmed_at) {
+        employee.skills.push({
+          id: row.skill_id,
+          name: row.skill_name,
+          confirmedAt: row.confirmed_at,
+        });
+      }
+    });
+    return [...employees.values()];
   }
 
   listCourses(user: AuthUser): CourseRecord[] {
