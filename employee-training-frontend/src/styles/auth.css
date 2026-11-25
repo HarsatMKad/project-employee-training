@@ -1,0 +1,29 @@
+
+
+.login-page { display: grid; min-height: 100vh; grid-template-columns: minmax(350px, 1fr) minmax(420px, .95fr); background: #fff; }
+.login-story { position: relative; display: flex; flex-direction: column; overflow: hidden; padding: 42px 10%; color: #edf7f0; background: #173d31; }
+.brand-light { color: #f6faf7; }
+.story-copy { position: relative; z-index: 1; max-width: 470px; margin: auto 0; padding: 50px 0 83px; }
+.eyebrow-light { color: #acd0b9; }
+.eyebrow-line { display: inline-block; width: 22px; margin-right: 8px; border-top: 1px solid #8fc9a2; vertical-align: 3px; }
+.story-copy h1 { margin: 20px 0 15px; font-family: Manrope, sans-serif; font-size: clamp(42px, 5vw, 64px); font-weight: 600; letter-spacing: -2.7px; line-height: 1.11; }
+.story-copy h1 em { color: #a5dbb8; font-style: normal; }
+.story-copy p { max-width: 335px; margin: 0; color: #bfd2c5; font-size: 13px; line-height: 1.75; }
+.story-foot { position: relative; z-index: 1; display: flex; align-items: center; gap: 11px; padding-top: 20px; color: #b5cabe; border-top: 1px solid rgba(255,255,255,.14); font-size: 10px; }
+.avatar-stack { display: flex; }
+.avatar-stack span { display: grid; width: 25px; height: 25px; place-items: center; margin-right: -6px; color: #244b3a; border: 2px solid #173d31; border-radius: 50%; background: #d9ebdd; font-size: 7px; font-weight: 700; }
+.avatar-stack span:nth-child(2) { color: #594c79; background: #e5ddf6; }
+.avatar-stack span:nth-child(3) { color: #e3f0e5; background: #54826a; }
+.story-orbit { position: absolute; width: 440px; height: 440px; border: 1px solid rgba(184,229,196,.1); border-radius: 50%; }
+.orbit-one { right: -260px; bottom: -170px; }
+.orbit-two { right: -205px; bottom: -115px; width: 330px; height: 330px; }
+.login-side { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 35px; background: #fbfcfa; }
+.login-card { width: min(100%, 380px); }
+.mobile-brand { display: none; margin-bottom: 38px; }
+.login-card h2 { margin: 11px 0 6px; font-family: Manrope, sans-serif; font-size: 27px; font-weight: 700; letter-spacing: -.8px; }
+.login-subtitle { margin: 0 0 22px; color: #849087; font-size: 11px; }
+.login-form { display: grid; gap: 8px; }
+.login-form label { margin-top: 4px; color: #516159; font-size: 10px; font-weight: 600; }
+.login-form input { height: 41px; }
+.login-submit { width: 100%; min-height: 43px; justify-content: space-between; margin-top: 9px; padding: 0 14px; }
+.login-legal { margin-top: 40px; color: #a3ada5; font-size: 9px; }
