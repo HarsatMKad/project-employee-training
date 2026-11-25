@@ -14,16 +14,16 @@ let AppController = class AppController {
     constructor(appService) {
         this.appService = appService;
     }
-    getHello() {
-        return this.appService.getHello();
+    health() {
+        return this.appService.health();
     }
 };
 __decorate([
-    Get(),
+    Get('health'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
-    __metadata("design:returntype", String)
-], AppController.prototype, "getHello", null);
+    __metadata("design:returntype", Object)
+], AppController.prototype, "health", null);
 AppController = __decorate([
     Controller(),
     __metadata("design:paramtypes", [AppService])

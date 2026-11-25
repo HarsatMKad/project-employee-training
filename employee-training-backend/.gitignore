@@ -50,6 +50,8 @@ lerna-debug.log*
 .tmp
 
 # Runtime data
+/data/*.sqlite
+/data/*.sqlite-*
 pids
 *.pid
 *.seed
