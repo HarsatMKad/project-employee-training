@@ -7,9 +7,9 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard, CurrentUser, Roles, RolesGuard } from './auth.guard.js';
+import { AuthGuard, CurrentUser, Roles, RolesGuard } from '../auth/auth.guard.js';
 import { CoursesService } from './courses.service.js';
-import type { AuthUser } from './security.js';
+import type { AuthUser } from '../security/security.js';
 
 @Controller()
 @UseGuards(AuthGuard, RolesGuard)

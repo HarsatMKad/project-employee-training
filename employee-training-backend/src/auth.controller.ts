@@ -8,15 +8,15 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { AuthService } from './auth.service.js';
+import { AuthService } from './auth/auth.service.js';
 import {
   expiredSessionCookie,
   getCookieValue,
   SESSION_COOKIE,
   sessionCookie,
   verifySessionToken,
-} from './security.js';
-import type { AuthUser } from './security.js';
+} from './security/security.js';
+import type { AuthUser } from './security/security.js';
 
 interface LoginBody {
   email?: unknown;

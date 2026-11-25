@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { DatabaseService } from './database.service.js';
+import { DatabaseService } from '../database/database.service.js';
 import { CoursesService } from './courses.service.js';
-import type { AuthUser } from './security.js';
+import type { AuthUser } from '../security/security.js';
 
 describe('course learning workflow', () => {
   let database: DatabaseService;

@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync, SQLInputValue } from 'node:sqlite';
-import { hashPassword } from './security.js';
+import { hashPassword } from '../security/security.js';
 
 export interface DatabaseRow {
   [column: string]: string | number | bigint | Uint8Array | null | undefined;

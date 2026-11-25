@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { DatabaseService, DatabaseRow } from './database.service.js';
-import { AuthUser, UserRole, signSessionToken, verifyPassword } from './security.js';
+import { DatabaseService, DatabaseRow } from '../database/database.service.js';
+import { AuthUser, UserRole, signSessionToken, verifyPassword } from '../security/security.js';
 
 interface UserRecord extends DatabaseRow {
   id: string;

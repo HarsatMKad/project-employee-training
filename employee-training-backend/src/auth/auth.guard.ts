@@ -15,7 +15,7 @@ import {
   SESSION_COOKIE,
   UserRole,
   verifySessionToken,
-} from './security.js';
+} from '../security/security.js';
 
 interface AuthenticatedRequest extends Request {
   user?: AuthUser;

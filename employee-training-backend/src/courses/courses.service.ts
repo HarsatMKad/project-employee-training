@@ -5,8 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { DatabaseRow, DatabaseService } from './database.service.js';
-import { AuthUser } from './security.js';
+import { DatabaseRow, DatabaseService } from '../database/database.service.js';
+import { AuthUser } from '../security/security.js';
 
 const MAX_QUESTIONS = 40;
 const MAX_ANSWER_OPTIONS = 8;
