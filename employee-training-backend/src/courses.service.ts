@@ -22,8 +22,8 @@ interface CourseRecord extends DatabaseRow {
   skill_name?: string | null;
   enrollment_id?: string | null;
   enrollment_status?: string | null;
-  lesson_count?: number;
-  completed_count?: number;
+  question_count?: number;
+  answered_count?: number;
   latest_score?: number | null;
 }
 
@@ -309,9 +309,15 @@ export class CoursesService {
                JOIN skills s ON s.id = cs.skill_id
                WHERE cs.course_id = c.id) AS skill_name,
               e.id AS enrollment_id, e.status AS enrollment_status,
-              (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
-              (SELECT COUNT(*) FROM lesson_progress lp
-               WHERE lp.enrollment_id = e.id) AS completed_count,
+              (SELECT COUNT(*) FROM quiz_questions q
+               WHERE q.course_id = c.id) AS question_count,
+              CASE WHEN e.status = 'completed' THEN
+                (SELECT COUNT(*) FROM quiz_questions q
+                 WHERE q.course_id = c.id)
+              ELSE
+                (SELECT COUNT(*) FROM quiz_progress qp
+                 WHERE qp.enrollment_id = e.id)
+              END AS answered_count,
               (SELECT score FROM quiz_attempts qa
                WHERE qa.enrollment_id = e.id
                ORDER BY qa.submitted_at DESC, qa.rowid DESC LIMIT 1) AS latest_score
@@ -465,11 +471,30 @@ export class CoursesService {
     );
     const latestAttempt = enrollment
       ? this.database.get<DatabaseRow>(
-          `SELECT score, passed, submitted_at FROM quiz_attempts
+          `SELECT score, passed, submitted_at, answers_json FROM quiz_attempts
            WHERE enrollment_id = ? ORDER BY submitted_at DESC, rowid DESC LIMIT 1`,
           [enrollment.id],
         )
       : undefined;
+    const savedAnswers = enrollment
+      ? this.database.all<DatabaseRow>(
+          `SELECT question_id, selected_option_index FROM quiz_progress
+           WHERE enrollment_id = ?`,
+          [enrollment.id],
+        )
+      : [];
+    const answers: Record<string, number> = {};
+    if (latestAttempt?.answers_json) {
+      const previousAnswers: unknown = JSON.parse(String(latestAttempt.answers_json));
+      if (isRecord(previousAnswers)) {
+        Object.entries(previousAnswers).forEach(([questionId, optionIndex]) => {
+          if (typeof optionIndex === 'number') answers[questionId] = optionIndex;
+        });
+      }
+    }
+    savedAnswers.forEach((answer) => {
+      answers[String(answer.question_id)] = Number(answer.selected_option_index);
+    });
 
     return {
       id: course.id,
@@ -489,13 +514,14 @@ export class CoursesService {
         title: lesson.title,
         content: lesson.content,
         videoUrl: lesson.video_url,
-        completed: Boolean(lesson.completed_at),
+        studied: Boolean(lesson.completed_at),
       })),
       questions: questions.map((question) => ({
         id: question.id,
         prompt: question.prompt,
         options: JSON.parse(question.options_json) as string[],
       })),
+      answers,
       enrollment: enrollment
         ? {
             id: enrollment.id,
@@ -512,11 +538,15 @@ export class CoursesService {
     };
   }
 
-  completeLesson(
+  setLessonStudied(
     user: AuthUser,
     courseId: string,
     lessonId: string,
-  ): { completed: true; enrollmentStatus: string } {
+    studied: unknown,
+  ): { studied: boolean } {
+    if (typeof studied !== 'boolean') {
+      throw new BadRequestException('Передайте отметку о прохождении материала');
+    }
     const enrollment = this.getEnrollment(user, courseId);
     const lesson = this.database.get(
       'SELECT id FROM lessons WHERE id = ? AND course_id = ?',
@@ -524,13 +554,65 @@ export class CoursesService {
     );
     if (!lesson) throw new NotFoundException('Урок не найден');
 
-    this.database.run(
-      `INSERT OR IGNORE INTO lesson_progress (id, enrollment_id, lesson_id, completed_at)
-       VALUES (?, ?, ?, ?)`,
-      [randomUUID(), enrollment.id, lessonId, new Date().toISOString()],
+    if (studied) {
+      this.database.run(
+        `INSERT OR IGNORE INTO lesson_progress (id, enrollment_id, lesson_id, completed_at)
+         VALUES (?, ?, ?, ?)`,
+        [randomUUID(), enrollment.id, lessonId, new Date().toISOString()],
+      );
+    } else {
+      this.database.run(
+        'DELETE FROM lesson_progress WHERE enrollment_id = ? AND lesson_id = ?',
+        [enrollment.id, lessonId],
+      );
+    }
+    return { studied };
+  }
+
+  saveQuizAnswer(
+    user: AuthUser,
+    courseId: string,
+    questionId: unknown,
+    optionIndex: unknown,
+  ): { answeredCount: number; questionCount: number } {
+    const enrollment = this.getEnrollment(user, courseId);
+    if (
+      typeof questionId !== 'string' ||
+      typeof optionIndex !== 'number' ||
+      !Number.isInteger(optionIndex)
+    ) {
+      throw new BadRequestException('Выберите вариант ответа');
+    }
+    const question = this.database.get<QuestionRecord>(
+      `SELECT id, options_json FROM quiz_questions
+       WHERE id = ? AND course_id = ?`,
+      [questionId, courseId],
     );
-    const status = this.updateCompletion(user, enrollment.id, courseId);
-    return { completed: true, enrollmentStatus: status };
+    if (!question) throw new NotFoundException('Вопрос не найден');
+    const options = JSON.parse(question.options_json) as string[];
+    if (optionIndex < 0 || optionIndex >= options.length) {
+      throw new BadRequestException('Выберите допустимый вариант ответа');
+    }
+
+    this.database.run(
+      `INSERT INTO quiz_progress
+       (enrollment_id, question_id, selected_option_index, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (enrollment_id, question_id) DO UPDATE SET
+         selected_option_index = excluded.selected_option_index,
+         updated_at = excluded.updated_at`,
+      [enrollment.id, questionId, optionIndex, new Date().toISOString()],
+    );
+    const progress = this.database.get<DatabaseRow>(
+      `SELECT
+         (SELECT COUNT(*) FROM quiz_questions WHERE course_id = ?) AS question_count,
+         (SELECT COUNT(*) FROM quiz_progress WHERE enrollment_id = ?) AS answered_count`,
+      [courseId, enrollment.id],
+    );
+    return {
+      answeredCount: Number(progress?.answered_count ?? 0),
+      questionCount: Number(progress?.question_count ?? 0),
+    };
   }
 
   submitQuiz(
@@ -564,20 +646,6 @@ export class CoursesService {
     ) {
       throw new BadRequestException('Ответьте на все вопросы теста');
     }
-    const lessonCounts = this.database.get<DatabaseRow>(
-      `SELECT
-         (SELECT COUNT(*) FROM lessons WHERE course_id = ?) AS total,
-         (SELECT COUNT(*) FROM lesson_progress
-          WHERE enrollment_id = ?) AS completed`,
-      [courseId, enrollment.id],
-    );
-    if (
-      Number(lessonCounts?.total ?? 0) === 0 ||
-      Number(lessonCounts?.completed ?? 0) < Number(lessonCounts?.total ?? 0)
-    ) {
-      throw new BadRequestException('Перед тестом завершите все уроки');
-    }
-
     const correctCount = questions.reduce(
       (count, question) =>
         count +
@@ -587,19 +655,38 @@ export class CoursesService {
     const score = Math.round((correctCount / questions.length) * 100);
     const course = this.getOrganizationCourse(user, courseId);
     const passed = score >= course.passing_score;
-    this.database.run(
-      `INSERT INTO quiz_attempts (id, enrollment_id, score, passed, answers_json, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        randomUUID(),
-        enrollment.id,
-        score,
-        passed ? 1 : 0,
-        JSON.stringify(answersValue),
-        new Date().toISOString(),
-      ],
-    );
-    const enrollmentStatus = this.updateCompletion(user, enrollment.id, courseId);
+    let enrollmentStatus = enrollment.status;
+    this.database.transaction(() => {
+      questions.forEach((question) => {
+        this.database.run(
+          `INSERT INTO quiz_progress
+           (enrollment_id, question_id, selected_option_index, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT (enrollment_id, question_id) DO UPDATE SET
+             selected_option_index = excluded.selected_option_index,
+             updated_at = excluded.updated_at`,
+          [
+            enrollment.id,
+            question.id,
+            answersValue[question.id] as number,
+            new Date().toISOString(),
+          ],
+        );
+      });
+      this.database.run(
+        `INSERT INTO quiz_attempts (id, enrollment_id, score, passed, answers_json, submitted_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          randomUUID(),
+          enrollment.id,
+          score,
+          passed ? 1 : 0,
+          JSON.stringify(answersValue),
+          new Date().toISOString(),
+        ],
+      );
+      enrollmentStatus = this.updateCompletion(user, enrollment.id, courseId);
+    });
     return { score, passed, passingScore: course.passing_score, enrollmentStatus };
   }
 
@@ -620,9 +707,15 @@ export class CoursesService {
       ...course,
       employees: this.database.all<DatabaseRow>(
         `SELECT u.id, u.name, u.email, e.status,
-                (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
-                (SELECT COUNT(*) FROM lesson_progress lp
-                 WHERE lp.enrollment_id = e.id) AS completed_count,
+                (SELECT COUNT(*) FROM quiz_questions q
+                 WHERE q.course_id = c.id) AS question_count,
+                CASE WHEN e.status = 'completed' THEN
+                  (SELECT COUNT(*) FROM quiz_questions q
+                   WHERE q.course_id = c.id)
+                ELSE
+                  (SELECT COUNT(*) FROM quiz_progress qp
+                   WHERE qp.enrollment_id = e.id)
+                END AS answered_count,
                 (SELECT score FROM quiz_attempts qa
                  WHERE qa.enrollment_id = e.id
                  ORDER BY qa.submitted_at DESC, qa.rowid DESC LIMIT 1) AS latest_score
@@ -667,23 +760,13 @@ export class CoursesService {
     enrollmentId: string,
     courseId: string,
   ): string {
-    const lessonCounts = this.database.get<DatabaseRow>(
-      `SELECT
-         (SELECT COUNT(*) FROM lessons WHERE course_id = ?) AS total,
-         (SELECT COUNT(*) FROM lesson_progress
-          WHERE enrollment_id = ?) AS completed`,
-      [courseId, enrollmentId],
-    );
     const latestAttempt = this.database.get<DatabaseRow>(
       `SELECT passed FROM quiz_attempts
        WHERE enrollment_id = ? ORDER BY submitted_at DESC, rowid DESC LIMIT 1`,
       [enrollmentId],
     );
     const course = this.getOrganizationCourse(user, courseId);
-    const completed =
-      Number(lessonCounts?.total ?? 0) > 0 &&
-      Number(lessonCounts?.completed ?? 0) >= Number(lessonCounts?.total ?? 0) &&
-      Number(latestAttempt?.passed ?? 0) === 1;
+    const completed = Number(latestAttempt?.passed ?? 0) === 1;
 
     if (completed) {
       this.database.run(

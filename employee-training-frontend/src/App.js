@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const API = '/api/v1';
 const MAX_QUESTIONS = 40;
@@ -152,7 +152,7 @@ function AppShell({ user, onLogout, children }) {
         <div className="side-label">РАБОЧЕЕ МЕСТО</div>
         <div className="side-nav-item active"><Icon name={isCreator ? 'chart' : 'book'} size={18} /><span>{isCreator ? 'Обзор обучения' : 'Моё обучение'}</span></div>
         <div className="sidebar-bottom">
-          <div className="sidebar-note"><div className="note-icon"><Icon name="spark" size={17} /></div><b>Растём вместе</b><p>Каждый пройденный урок — ещё один шаг к новым возможностям.</p></div>
+          <div className="sidebar-note"><div className="note-icon"><Icon name="spark" size={17} /></div><b>Растём вместе</b><p>Изучайте материалы в своём темпе, а тест покажет результат.</p></div>
           <button type="button" className="user-menu" onClick={onLogout}>
             <span className="user-avatar">{user.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span>
             <span className="user-copy"><b>{user.name}</b><small>{isCreator ? 'Создатель курсов' : 'Сотрудник'}</small></span>
@@ -328,7 +328,7 @@ function CreatorCourseList({ courses }) {
             {(course.employees || []).length ? course.employees.map((employee) => (
               <div className="employee-result" key={employee.id}>
                 <span className="mini-avatar">{employee.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span>
-                <span className="result-person"><b>{employee.name}</b><small>{employee.completed_count || 0}/{employee.lesson_count || 0} уроков · тест {employee.latest_score == null ? '—' : `${employee.latest_score}%`}</small></span>
+                <span className="result-person"><b>{employee.name}</b><small>{employee.answered_count || 0}/{employee.question_count || 0} ответов · тест {employee.latest_score == null ? '—' : `${employee.latest_score}%`}</small></span>
                 <span className={`result-state ${employee.status === 'completed' ? 'done' : ''}`}>{employee.status === 'completed' ? 'Готово' : 'В процессе'}</span>
               </div>
             )) : <div className="not-assigned">Курс ещё не назначен</div>}
@@ -466,12 +466,14 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
   const [course, setCourse] = useState(null);
   const [loadingCourse, setLoadingCourse] = useState(false);
   const [answers, setAnswers] = useState({});
+  const [savingAnswers, setSavingAnswers] = useState(0);
   const [quizResult, setQuizResult] = useState(null);
   const [error, setError] = useState('');
+  const answerSaveQueue = useRef(Promise.resolve());
   const courses = dashboard.courses || [];
   const completed = courses.filter((item) => item.enrollment_status === 'completed').length;
-  const totalLessons = courses.reduce((sum, item) => sum + Number(item.lesson_count || 0), 0);
-  const completedLessons = courses.reduce((sum, item) => sum + Number(item.completed_count || 0), 0);
+  const totalQuestions = courses.reduce((sum, item) => sum + Number(item.question_count || 0), 0);
+  const answeredQuestions = courses.reduce((sum, item) => sum + Number(item.answered_count || 0), 0);
 
   const openCourse = useCallback(async (id) => {
     setSelectedId(id);
@@ -480,7 +482,9 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
     setQuizResult(null);
     setAnswers({});
     try {
-      setCourse(await request(`/courses/${id}`));
+      const loadedCourse = await request(`/courses/${id}`);
+      setCourse(loadedCourse);
+      setAnswers(loadedCourse.answers || {});
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -488,14 +492,42 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
     }
   }, []);
 
-  async function completeLesson(lessonId) {
+  async function setLessonStudied(lessonId, studied) {
     try {
-      await request(`/courses/${course.id}/lessons/${lessonId}/complete`, { method: 'POST' });
-      await Promise.all([openCourse(course.id), refresh()]);
-      setNotice('Урок отмечен как пройденный');
+      await request(`/courses/${course.id}/lessons/${lessonId}/study`, {
+        method: 'POST',
+        body: JSON.stringify({ studied }),
+      });
+      setCourse((current) => current && ({
+        ...current,
+        lessons: current.lessons.map((lesson) => lesson.id === lessonId
+          ? { ...lesson, studied }
+          : lesson),
+      }));
+      setNotice(studied ? 'Материал отмечен как изученный' : 'Отметка о материале снята');
     } catch (requestError) {
       setError(requestError.message);
     }
+  }
+
+  function saveQuizAnswer(questionId, optionIndex) {
+    setAnswers((current) => ({ ...current, [questionId]: optionIndex }));
+    setQuizResult(null);
+    setError('');
+    setSavingAnswers((count) => count + 1);
+    answerSaveQueue.current = answerSaveQueue.current.then(async () => {
+      try {
+        await request(`/courses/${course.id}/answers`, {
+          method: 'POST',
+          body: JSON.stringify({ questionId, optionIndex }),
+        });
+        await refresh();
+      } catch (requestError) {
+        setError(requestError.message);
+      } finally {
+        setSavingAnswers((count) => Math.max(0, count - 1));
+      }
+    });
   }
 
   async function submitQuiz(event) {
@@ -516,8 +548,14 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
     }
   }
 
-  const progress = (item) => item.lesson_count
-    ? Math.round((Number(item.completed_count || 0) / item.lesson_count) * 100)
+  const progress = (item) => item.question_count
+    ? Math.round((Number(item.answered_count || 0) / item.question_count) * 100)
+    : 0;
+  const answeredInQuiz = course
+    ? course.questions.filter((question) => answers[question.id] !== undefined).length
+    : 0;
+  const quizProgress = course?.questions.length
+    ? Math.round((answeredInQuiz / course.questions.length) * 100)
     : 0;
 
   return (
@@ -526,14 +564,14 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
         <div>
           <div className="eyebrow">ВАШ ПУТЬ РАЗВИТИЯ</div>
           <h1>Добрый день, Иван <span className="wave">✦</span></h1>
-          <p>Новые навыки начинаются с одного урока. Продолжайте в своём темпе.</p>
+          <p>Изучайте материалы в своём темпе и проходите итоговые тесты.</p>
         </div>
-        <div className="learning-streak"><span className="streak-icon">✳</span><span><b>Ваш прогресс</b><small>{completedLessons} из {totalLessons} уроков завершено</small></span></div>
+        <div className="learning-streak"><span className="streak-icon">✳</span><span><b>Ваш прогресс</b><small>{answeredQuestions} из {totalQuestions} ответов в тестах</small></span></div>
       </div>
 
       <div className="employee-summary">
         <div className="summary-main"><div className="summary-icon"><Icon name="book" size={20} /></div><div><span>МОЁ ОБУЧЕНИЕ</span><b>{completed} <small>из</small> {courses.length} <small>курсов завершено</small></b></div></div>
-        <div className="summary-progress"><div className="progress-caption"><span>Общий прогресс</span><b>{totalLessons ? Math.round((completedLessons / totalLessons) * 100) : 0}%</b></div><div className="progress-track"><span style={{ width: `${totalLessons ? (completedLessons / totalLessons) * 100 : 0}%` }} /></div></div>
+        <div className="summary-progress"><div className="progress-caption"><span>Общий прогресс по тестам</span><b>{totalQuestions ? Math.round((answeredQuestions / totalQuestions) * 100) : 0}%</b></div><div className="progress-track"><span style={{ width: `${totalQuestions ? (answeredQuestions / totalQuestions) * 100 : 0}%` }} /></div></div>
         <div className="summary-decoration"><Icon name="spark" size={32} /></div>
       </div>
 
@@ -543,7 +581,7 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
           {courses.length ? <div className="learner-course-list">{courses.map((item, index) => (
             <button className={`learner-course-card ${selectedId === item.id ? 'selected' : ''}`} type="button" onClick={() => openCourse(item.id)} key={item.id}>
               <div className={`learner-cover learner-cover-${index % 4}`}><Icon name="book" size={22} /></div>
-              <div className="learner-course-info"><div className="course-title-line"><h3>{item.title}</h3>{item.enrollment_status === 'completed' && <span className="completed-check"><Icon name="check" size={14} /></span>}</div><p>{item.skill_name || 'Обучение для вашей команды'}</p><div className="learner-progress-line"><div className="progress-track"><span style={{ width: `${progress(item)}%` }} /></div><small>{item.completed_count || 0}/{item.lesson_count || 0} уроков</small></div></div>
+              <div className="learner-course-info"><div className="course-title-line"><h3>{item.title}</h3>{item.enrollment_status === 'completed' && <span className="completed-check"><Icon name="check" size={14} /></span>}</div><p>{item.skill_name || 'Обучение для вашей команды'}</p><div className="learner-progress-line"><div className="progress-track"><span style={{ width: `${progress(item)}%` }} /></div><small>{item.answered_count || 0}/{item.question_count || 0} ответов</small></div></div>
               <span className="course-open"><Icon name="arrow" size={18} /></span>
             </button>
           ))}</div> : <div className="empty-card learner-empty"><div className="empty-illustration"><Icon name="book" size={28} /></div><h3>Пока нет назначенных курсов</h3><p>Когда создатель назначит вам обучение, оно появится здесь.</p></div>}
@@ -552,24 +590,24 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
             {loadingCourse ? <div className="loading-inline">Загружаем курс…</div> : course && <>
               <div className="detail-heading"><div><div className="eyebrow">ВАШ УЧЕБНЫЙ МАРШРУТ</div><h2>{course.title}</h2><p>{course.description}</p></div><button className="icon-button" type="button" onClick={() => { setSelectedId(''); setCourse(null); }} aria-label="Закрыть курс">×</button></div>
               <div className="detail-lessons">{course.lessons.map((lesson, index) => (
-                <div className={`lesson-row ${lesson.completed ? 'lesson-done' : ''}`} key={lesson.id}>
-                  <span className="lesson-number">{lesson.completed ? <Icon name="check" size={16} /> : String(index + 1).padStart(2, '0')}</span>
+                <div className={`lesson-row ${lesson.studied ? 'lesson-done' : ''}`} key={lesson.id}>
+                  <span className="lesson-number">{lesson.studied ? <Icon name="check" size={16} /> : String(index + 1).padStart(2, '0')}</span>
                   <div className="lesson-copy"><b>{lesson.title}</b><p>{lesson.content}</p>{lesson.videoUrl && <a href={lesson.videoUrl} target="_blank" rel="noreferrer" className="video-link"><Icon name="play" size={14} /> Смотреть видео</a>}</div>
-                  <button className={lesson.completed ? 'lesson-action completed-action' : 'lesson-action'} type="button" onClick={() => completeLesson(lesson.id)} disabled={lesson.completed}>{lesson.completed ? 'Пройдено' : 'Завершить'}</button>
+                  <label className="lesson-checkbox"><input type="checkbox" checked={Boolean(lesson.studied)} onChange={(event) => setLessonStudied(lesson.id, event.target.checked)} /><span>Изучено</span></label>
                 </div>
               ))}</div>
               <form className="quiz-card" onSubmit={submitQuiz}>
                 <div className="quiz-card-heading"><div className="quiz-icon"><Icon name="check" size={18} /></div><div><h3>Проверка знаний</h3><p>Нужно набрать не менее {course.passingScore}%</p></div></div>
-                {course.lessons.some((lesson) => !lesson.completed) && <div className="quiz-locked"><Icon name="lock" size={16} /> Сначала завершите все уроки, затем откроется тест.</div>}
+                <div className="quiz-progress"><div className="progress-caption"><span>Прогресс теста</span><b>{answeredInQuiz} из {course.questions.length} · {quizProgress}%</b></div><div className="progress-track"><span style={{ width: `${quizProgress}%` }} /></div></div>
                 {course.questions.map((question, index) => (
-                  <fieldset className="quiz-question" key={question.id} disabled={course.lessons.some((lesson) => !lesson.completed)}>
+                  <fieldset className="quiz-question" key={question.id}>
                     <legend>{String(index + 1).padStart(2, '0')} / {question.prompt}</legend>
-                    {question.options.map((option, optionIndex) => <label className="quiz-choice" key={`${question.id}-${optionIndex}`}><input type="radio" name={question.id} checked={answers[question.id] === optionIndex} onChange={() => setAnswers((current) => ({ ...current, [question.id]: optionIndex }))} required /><span>{option}</span></label>)}
+                    {question.options.map((option, optionIndex) => <label className="quiz-choice" key={`${question.id}-${optionIndex}`}><input type="radio" name={question.id} checked={answers[question.id] === optionIndex} onChange={() => saveQuizAnswer(question.id, optionIndex)} required /><span>{option}</span></label>)}
                   </fieldset>
                 ))}
                 {quizResult && <div className={quizResult.passed ? 'quiz-result passed' : 'quiz-result failed'}>{quizResult.passed ? 'Отлично! Тест пройден.' : 'Пока не получилось — попробуйте ещё раз.'}<b>{quizResult.score}%</b></div>}
                 {error && <div className="inline-error" role="alert">{error}</div>}
-                <button className="button button-primary" type="submit" disabled={course.lessons.some((lesson) => !lesson.completed)}>{quizResult?.passed ? 'Пройти тест ещё раз' : 'Проверить ответы'} <Icon name="arrow" size={16} /></button>
+                <button className="button button-primary" type="submit" disabled={savingAnswers > 0}>{savingAnswers ? 'Сохраняем ответы…' : quizResult?.passed ? 'Пройти тест ещё раз' : 'Проверить ответы'} <Icon name="arrow" size={16} /></button>
               </form>
             </>}
           </section>}

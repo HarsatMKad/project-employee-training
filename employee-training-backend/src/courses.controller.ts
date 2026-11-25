@@ -91,14 +91,35 @@ export class CoursesController {
     return this.coursesService.getCourse(user, courseId);
   }
 
-  @Post('courses/:courseId/lessons/:lessonId/complete')
+  @Post('courses/:courseId/lessons/:lessonId/study')
   @Roles('employee')
-  completeLesson(
+  setLessonStudied(
     @CurrentUser() user: AuthUser,
     @Param('courseId') courseId: string,
     @Param('lessonId') lessonId: string,
-  ): { completed: true; enrollmentStatus: string } {
-    return this.coursesService.completeLesson(user, courseId, lessonId);
+    @Body() body: { studied?: unknown },
+  ): { studied: boolean } {
+    return this.coursesService.setLessonStudied(
+      user,
+      courseId,
+      lessonId,
+      body?.studied,
+    );
+  }
+
+  @Post('courses/:courseId/answers')
+  @Roles('employee')
+  saveQuizAnswer(
+    @CurrentUser() user: AuthUser,
+    @Param('courseId') courseId: string,
+    @Body() body: { questionId?: unknown; optionIndex?: unknown },
+  ): { answeredCount: number; questionCount: number } {
+    return this.coursesService.saveQuizAnswer(
+      user,
+      courseId,
+      body?.questionId,
+      body?.optionIndex,
+    );
   }
 
   @Post('courses/:courseId/submit')

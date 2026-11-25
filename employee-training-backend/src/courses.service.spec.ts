@@ -72,7 +72,7 @@ describe('course learning workflow', () => {
     );
   });
 
-  it('confirms the linked skill only after completing lessons and passing the quiz', () => {
+  it('tracks studied lessons separately and completes the course on a passing quiz', () => {
     const additionalSkill = courses.createSkill(creator, {
       name: 'Командная работа',
       description: 'Взаимодействие с командой.',
@@ -108,12 +108,35 @@ describe('course learning workflow', () => {
     const lesson = (course.lessons as Array<{ id: string }>)[0];
     const question = (course.questions as Array<{ id: string }>)[0];
 
-    expect(() =>
-      courses.submitQuiz(employee, created.id, { [question.id]: 0 }),
-    ).toThrow(BadRequestException);
     expect(courses.dashboard(employee).skills).toEqual([]);
 
-    courses.completeLesson(employee, created.id, lesson.id);
+    expect(courses.setLessonStudied(employee, created.id, lesson.id, true)).toEqual({
+      studied: true,
+    });
+    expect(
+      (courses.getCourse(employee, created.id).lessons as Array<{ studied: boolean }>)[0]
+        .studied,
+    ).toBe(true);
+    expect(
+      (courses.dashboard(employee).courses as Array<Record<string, unknown>>)[0],
+    ).toMatchObject({
+      enrollment_status: 'in_progress',
+      question_count: 1,
+      answered_count: 0,
+    });
+
+    expect(courses.setLessonStudied(employee, created.id, lesson.id, false)).toEqual({
+      studied: false,
+    });
+    expect(
+      (courses.getCourse(employee, created.id).lessons as Array<{ studied: boolean }>)[0]
+        .studied,
+    ).toBe(false);
+
+    expect(courses.saveQuizAnswer(employee, created.id, question.id, 1)).toEqual({
+      answeredCount: 1,
+      questionCount: 1,
+    });
     const failedAttempt = courses.submitQuiz(employee, created.id, {
       [question.id]: 1,
     });
@@ -127,6 +150,13 @@ describe('course learning workflow', () => {
       score: 100,
       passed: true,
       enrollmentStatus: 'completed',
+    });
+    expect(
+      (courses.dashboard(employee).courses as Array<Record<string, unknown>>)[0],
+    ).toMatchObject({
+      enrollment_status: 'completed',
+      question_count: 1,
+      answered_count: 1,
     });
     const confirmedSkills = courses.dashboard(employee).skills as unknown[];
     expect(confirmedSkills).toHaveLength(2);

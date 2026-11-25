@@ -361,14 +361,16 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .lesson-copy b { display: block; margin-top: 2px; font-size: 10px; }
 .lesson-copy p { margin: 5px 0 0; color: #86928a; font-size: 9px; line-height: 1.55; white-space: pre-wrap; }
 .video-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; color: #468261; font-size: 8px; text-decoration: none; }
-.lesson-action { flex: 0 0 auto; padding: 6px 8px; color: #357853; border: 1px solid #d7e8da; border-radius: 6px; background: #f6fbf6; font-size: 8px; }
-.completed-action { color: #8a998e; border-color: #edf0ed; background: #f7f8f7; }
+.lesson-checkbox { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 6px 8px; color: #526f5b; border: 1px solid #d7e8da; border-radius: 6px; background: #f6fbf6; font-size: 8px; white-space: nowrap; cursor: pointer; }
+.lesson-checkbox input { width: 13px; height: 13px; margin: 0; accent-color: var(--green); }
 .quiz-card { padding: 13px; margin-top: 14px; border: 1px solid #e7e5f1; border-radius: 10px; background: #fbfaff; }
 .quiz-card-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
 .quiz-icon { display: grid; width: 29px; height: 29px; place-items: center; color: #7261ac; background: #efecf9; border-radius: 8px; }
 .quiz-card-heading h3 { margin: 0; font-size: 10px; }
 .quiz-card-heading p { margin: 3px 0 0; color: #9390a4; font-size: 8px; }
-.quiz-locked { display: flex; align-items: center; gap: 6px; padding: 8px; margin-bottom: 10px; color: #827a61; border: 1px solid #f1e8d6; border-radius: 7px; background: #fffcf4; font-size: 8px; }
+.quiz-progress { margin-bottom: 11px; }
+.quiz-progress .progress-caption { margin-bottom: 5px; }
+.quiz-progress .progress-track { height: 4px; }
 .quiz-question { display: grid; gap: 6px; padding: 0; margin: 12px 0; border: 0; }
 .quiz-question legend { width: 100%; margin-bottom: 6px; color: #3a3b4d; font-size: 9px; font-weight: 600; }
 .quiz-choice { display: flex; align-items: center; gap: 7px; padding: 7px 8px; color: #6c7180; border: 1px solid #ecebf2; border-radius: 6px; background: white; font-size: 8px; cursor: pointer; }
@@ -494,6 +496,5 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .section-tabs { gap: 17px; }
   .course-detail-card { padding: 13px 10px; }
   .lesson-row { gap: 7px; }
-  .lesson-action { padding: 6px; }
   .quiz-card { padding: 11px 9px; }
 }

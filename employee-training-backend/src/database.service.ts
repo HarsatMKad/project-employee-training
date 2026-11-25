@@ -128,6 +128,13 @@ export class DatabaseService implements OnModuleDestroy {
         answers_json TEXT NOT NULL,
         submitted_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS quiz_progress (
+        enrollment_id TEXT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+        question_id TEXT NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+        selected_option_index INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (enrollment_id, question_id)
+      );
       CREATE TABLE IF NOT EXISTS user_skills (
         id TEXT PRIMARY KEY,
         organization_id TEXT NOT NULL REFERENCES organizations(id),
