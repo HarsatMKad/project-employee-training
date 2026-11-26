@@ -30,7 +30,7 @@ function CreatorDashboard({ dashboard, refresh, setNotice }) {
       </div>
 
       <div className="section-tabs">
-        <button className={tab === 'overview' ? 'tab active' : 'tab'} onClick={() => setTab('overview')} type="button">Мои курсы <span className="tab-count">{courses.length}</span></button>
+        <button className={tab === 'overview' ? 'tab active' : 'tab'} onClick={() => setTab('overview')} type="button">Список курсов <span className="tab-count">{courses.length}</span></button>
         <button className={tab === 'create' ? 'tab active' : 'tab'} onClick={() => setTab('create')} type="button">Конструктор курса</button>
         <button className={tab === 'skills' ? 'tab active' : 'tab'} onClick={() => setTab('skills')} type="button">Навыки <span className="tab-count">{dashboard.skills?.length || 0}</span></button>
       </div>

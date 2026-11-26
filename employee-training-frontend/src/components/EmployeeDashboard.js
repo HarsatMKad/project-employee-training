@@ -137,7 +137,7 @@ function EmployeeDashboard({ dashboard, refresh, setNotice }) {
               <div className="detail-lessons">{course.lessons.map((lesson, index) => (
                 <div className={`lesson-row ${lesson.studied ? 'lesson-done' : ''}`} key={lesson.id}>
                   <span className="lesson-number">{lesson.studied ? <Icon name="check" size={16} /> : String(index + 1).padStart(2, '0')}</span>
-                  <div className="lesson-copy"><b>{lesson.title}</b><p>{lesson.content}</p>{lesson.videoUrl && <a href={lesson.videoUrl} target="_blank" rel="noreferrer" className="video-link"><Icon name="play" size={14} /> Смотреть видео</a>}</div>
+                  <div className="lesson-copy"><b>{lesson.title}</b><p>{lesson.content}</p>{lesson.videoUrl && <a href={lesson.videoUrl} target="_blank" rel="noreferrer" className="video-link"><Icon name="play" size={14} /> Посмотреть материалы</a>}</div>
                   <label className="lesson-checkbox"><input type="checkbox" checked={Boolean(lesson.studied)} onChange={(event) => setLessonStudied(lesson.id, event.target.checked)} /><span>Изучено</span></label>
                 </div>
               ))}</div>
