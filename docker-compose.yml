@@ -5,8 +5,6 @@ services:
             POSTGRES_DB: employee_training
             POSTGRES_USER: postgres
             POSTGRES_PASSWORD: postgres
-        volumes:
-            - postgres-data:/var/lib/postgresql/data
         networks:
             - app-network
 
