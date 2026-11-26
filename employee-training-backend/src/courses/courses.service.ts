@@ -5,7 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { DatabaseRow, DatabaseService } from '../database/database.service.js';
+import {
+  DatabaseExecutor,
+  DatabaseRow,
+  DatabaseService,
+} from '../database/database.service.js';
 import { AuthUser } from '../security/security.js';
 
 const MAX_QUESTIONS = 40;
@@ -101,7 +105,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseCourseInput(value: unknown): CourseInput {
-  if (!isRecord(value)) throw new BadRequestException('Некорректные данные курса');
+  if (!isRecord(value))
+    throw new BadRequestException('Некорректные данные курса');
   const { title, description, passingScore, lessons, questions } = value;
   const skillIdsValue = value.skillIds;
   const legacySkillId = value.skillId;
@@ -126,7 +131,12 @@ function parseCourseInput(value: unknown): CourseInput {
   ) {
     throw new BadRequestException('Проверьте выбранные навыки курса');
   }
-  if (skillIdsValue === undefined && legacySkillId !== null && legacySkillId !== undefined && typeof legacySkillId !== 'string') {
+  if (
+    skillIdsValue === undefined &&
+    legacySkillId !== null &&
+    legacySkillId !== undefined &&
+    typeof legacySkillId !== 'string'
+  ) {
     throw new BadRequestException('Проверьте выбранные навыки курса');
   }
   if (!Array.isArray(lessons) || lessons.length === 0) {
@@ -155,7 +165,9 @@ function parseCourseInput(value: unknown): CourseInput {
         }
         videoUrl = parsedUrl.toString();
       } catch {
-        throw new BadRequestException('Ссылка на видео должна начинаться с http:// или https://');
+        throw new BadRequestException(
+          'Ссылка на видео должна начинаться с http:// или https://',
+        );
       }
     }
 
@@ -170,7 +182,9 @@ function parseCourseInput(value: unknown): CourseInput {
     throw new BadRequestException('Добавьте хотя бы один вопрос к тесту');
   }
   if (questions.length > MAX_QUESTIONS) {
-    throw new BadRequestException(`В тесте может быть не больше ${MAX_QUESTIONS} вопросов`);
+    throw new BadRequestException(
+      `В тесте может быть не больше ${MAX_QUESTIONS} вопросов`,
+    );
   }
   const parsedQuestions = questions.map((question): QuestionInput => {
     if (
@@ -180,7 +194,9 @@ function parseCourseInput(value: unknown): CourseInput {
       !Array.isArray(question.options) ||
       question.options.length < 2 ||
       question.options.length > MAX_ANSWER_OPTIONS ||
-      question.options.some((option) => typeof option !== 'string' || !option.trim()) ||
+      question.options.some(
+        (option) => typeof option !== 'string' || !option.trim(),
+      ) ||
       typeof question.correctOptionIndex !== 'number' ||
       !Number.isInteger(question.correctOptionIndex) ||
       question.correctOptionIndex < 0 ||
@@ -217,7 +233,7 @@ function parseCourseInput(value: unknown): CourseInput {
 export class CoursesService {
   constructor(private readonly database: DatabaseService) {}
 
-  listSkills(user: AuthUser): SkillRecord[] {
+  async listSkills(user: AuthUser): Promise<SkillRecord[]> {
     return this.database.all<SkillRecord>(
       `SELECT id, name, description FROM skills
        WHERE organization_id = ? ORDER BY name`,
@@ -225,10 +241,10 @@ export class CoursesService {
     );
   }
 
-  createSkill(
+  async createSkill(
     user: AuthUser,
     body: unknown,
-  ): { id: string; name: string; description: string } {
+  ): Promise<{ id: string; name: string; description: string }> {
     if (!isRecord(body) || typeof body.name !== 'string' || !body.name.trim()) {
       throw new BadRequestException('Укажите название навыка');
     }
@@ -243,19 +259,22 @@ export class CoursesService {
     const description =
       typeof body.description === 'string' ? body.description.trim() : '';
     if (name.length > 100 || description.length > 500) {
-      throw new BadRequestException('Название или описание навыка слишком длинное');
+      throw new BadRequestException(
+        'Название или описание навыка слишком длинное',
+      );
     }
     const normalizedName = name.toLocaleLowerCase('ru-RU');
-    const existing = this.database
-      .all<SkillRecord>(
+    const existing = (
+      await this.database.all<SkillRecord>(
         'SELECT id, name, description FROM skills WHERE organization_id = ?',
         [user.organizationId],
       )
-      .some((skill) => skill.name.toLocaleLowerCase('ru-RU') === normalizedName);
-    if (existing) throw new ConflictException('Навык с таким названием уже есть');
+    ).some((skill) => skill.name.toLocaleLowerCase('ru-RU') === normalizedName);
+    if (existing)
+      throw new ConflictException('Навык с таким названием уже есть');
 
     const id = randomUUID();
-    this.database.run(
+    await this.database.run(
       `INSERT INTO skills (id, organization_id, name, description)
        VALUES (?, ?, ?, ?)`,
       [id, user.organizationId, name, description],
@@ -263,30 +282,33 @@ export class CoursesService {
     return { id, name, description };
   }
 
-  deleteSkill(user: AuthUser, skillId: string): { success: true } {
-    const skill = this.database.get(
+  async deleteSkill(
+    user: AuthUser,
+    skillId: string,
+  ): Promise<{ success: true }> {
+    const skill = await this.database.get(
       'SELECT id FROM skills WHERE id = ? AND organization_id = ?',
       [skillId, user.organizationId],
     );
     if (!skill) throw new NotFoundException('Навык не найден');
 
-    this.database.transaction(() => {
-      this.database.run(
+    await this.database.transaction(async (transaction) => {
+      await transaction.run(
         'UPDATE courses SET skill_id = NULL WHERE organization_id = ? AND skill_id = ?',
         [user.organizationId, skillId],
       );
-      this.database.run(
+      await transaction.run(
         'DELETE FROM user_skills WHERE organization_id = ? AND skill_id = ?',
         [user.organizationId, skillId],
       );
-      this.database.run(
+      await transaction.run(
         `DELETE FROM course_skills
          WHERE skill_id = ? AND course_id IN (
            SELECT id FROM courses WHERE organization_id = ?
          )`,
         [skillId, user.organizationId],
       );
-      this.database.run(
+      await transaction.run(
         'DELETE FROM skills WHERE id = ? AND organization_id = ?',
         [skillId, user.organizationId],
       );
@@ -294,8 +316,8 @@ export class CoursesService {
     return { success: true };
   }
 
-  listEmployees(user: AuthUser): EmployeeRecord[] {
-    const rows = this.database.all<EmployeeSkillRow>(
+  async listEmployees(user: AuthUser): Promise<EmployeeRecord[]> {
+    const rows = await this.database.all<EmployeeSkillRow>(
       `SELECT u.id, u.name, u.email, u.department, u.company_role,
               s.id AS skill_id, s.name AS skill_name, us.confirmed_at
        FROM users u
@@ -333,14 +355,14 @@ export class CoursesService {
     return [...employees.values()];
   }
 
-  listCourses(user: AuthUser): CourseRecord[] {
+  async listCourses(user: AuthUser): Promise<CourseRecord[]> {
     if (user.role === 'creator') {
       return this.database.all<CourseRecord>(
         `SELECT c.id, c.title, c.description, c.status, c.passing_score,
-                (SELECT group_concat(s.name, ', ') FROM course_skills cs
+                (SELECT string_agg(s.name, ', ' ORDER BY s.name) FROM course_skills cs
                  JOIN skills s ON s.id = cs.skill_id
                  WHERE cs.course_id = c.id) AS skill_name,
-                (SELECT COUNT(*) FROM enrollments e WHERE e.course_id = c.id) AS enrollment_count
+                (SELECT COUNT(*)::integer FROM enrollments e WHERE e.course_id = c.id) AS enrollment_count
          FROM courses c
          WHERE c.organization_id = ?
          ORDER BY c.created_at DESC`,
@@ -350,22 +372,22 @@ export class CoursesService {
 
     return this.database.all<CourseRecord>(
       `SELECT c.id, c.title, c.description, c.status, c.passing_score,
-              (SELECT group_concat(s.name, ', ') FROM course_skills cs
+              (SELECT string_agg(s.name, ', ' ORDER BY s.name) FROM course_skills cs
                JOIN skills s ON s.id = cs.skill_id
                WHERE cs.course_id = c.id) AS skill_name,
               e.id AS enrollment_id, e.status AS enrollment_status,
-              (SELECT COUNT(*) FROM quiz_questions q
+              (SELECT COUNT(*)::integer FROM quiz_questions q
                WHERE q.course_id = c.id) AS question_count,
               CASE WHEN e.status = 'completed' THEN
-                (SELECT COUNT(*) FROM quiz_questions q
+                (SELECT COUNT(*)::integer FROM quiz_questions q
                  WHERE q.course_id = c.id)
               ELSE
-                (SELECT COUNT(*) FROM quiz_progress qp
+                (SELECT COUNT(*)::integer FROM quiz_progress qp
                  WHERE qp.enrollment_id = e.id)
               END AS answered_count,
               (SELECT score FROM quiz_attempts qa
                WHERE qa.enrollment_id = e.id
-               ORDER BY qa.submitted_at DESC, qa.rowid DESC LIMIT 1) AS latest_score
+               ORDER BY qa.submitted_at DESC, qa.attempt_order DESC LIMIT 1) AS latest_score
        FROM enrollments e
        JOIN courses c ON c.id = e.course_id
        WHERE e.user_id = ? AND c.organization_id = ? AND c.status = 'published'
@@ -374,11 +396,14 @@ export class CoursesService {
     );
   }
 
-  createCourse(user: AuthUser, body: unknown): { id: string; status: string } {
+  async createCourse(
+    user: AuthUser,
+    body: unknown,
+  ): Promise<{ id: string; status: string }> {
     const input = parseCourseInput(body);
     if (input.skillIds.length) {
       const placeholders = input.skillIds.map(() => '?').join(', ');
-      const skillCount = this.database.get<DatabaseRow>(
+      const skillCount = await this.database.get<DatabaseRow>(
         `SELECT COUNT(*) AS count FROM skills
          WHERE organization_id = ? AND id IN (${placeholders})`,
         [user.organizationId, ...input.skillIds],
@@ -389,8 +414,8 @@ export class CoursesService {
     }
 
     const courseId = randomUUID();
-    this.database.transaction(() => {
-      this.database.run(
+    await this.database.transaction(async (transaction) => {
+      await transaction.run(
         `INSERT INTO courses
          (id, organization_id, creator_id, skill_id, title, description, passing_score, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
@@ -405,14 +430,14 @@ export class CoursesService {
           new Date().toISOString(),
         ],
       );
-      input.skillIds.forEach((skillId) => {
-        this.database.run(
+      for (const skillId of input.skillIds) {
+        await transaction.run(
           'INSERT INTO course_skills (course_id, skill_id) VALUES (?, ?)',
           [courseId, skillId],
         );
-      });
-      input.lessons.forEach((lesson, position) => {
-        this.database.run(
+      }
+      for (const [position, lesson] of input.lessons.entries()) {
+        await transaction.run(
           `INSERT INTO lessons (id, course_id, title, content, video_url, position)
            VALUES (?, ?, ?, ?, ?, ?)`,
           [
@@ -424,9 +449,9 @@ export class CoursesService {
             position,
           ],
         );
-      });
-      input.questions.forEach((question, position) => {
-        this.database.run(
+      }
+      for (const [position, question] of input.questions.entries()) {
+        await transaction.run(
           `INSERT INTO quiz_questions
            (id, course_id, prompt, options_json, correct_option_index, position)
            VALUES (?, ?, ?, ?, ?, ?)`,
@@ -439,47 +464,53 @@ export class CoursesService {
             position,
           ],
         );
-      });
+      }
     });
 
     return { id: courseId, status: 'draft' };
   }
 
-  publishCourse(user: AuthUser, courseId: string): { id: string; status: string } {
-    const course = this.getOrganizationCourse(user, courseId);
+  async publishCourse(
+    user: AuthUser,
+    courseId: string,
+  ): Promise<{ id: string; status: string }> {
+    const course = await this.getOrganizationCourse(user, courseId);
     if (course.status === 'draft') {
-      this.database.run("UPDATE courses SET status = 'published' WHERE id = ?", [courseId]);
+      await this.database.run(
+        "UPDATE courses SET status = 'published' WHERE id = ?",
+        [courseId],
+      );
     }
     return { id: courseId, status: 'published' };
   }
 
-  assignCourse(
+  async assignCourse(
     user: AuthUser,
     courseId: string,
     employeeId: unknown,
-  ): { enrollmentId: string; status: string } {
+  ): Promise<{ enrollmentId: string; status: string }> {
     if (typeof employeeId !== 'string' || !employeeId) {
       throw new BadRequestException('Выберите сотрудника');
     }
-    const course = this.getOrganizationCourse(user, courseId);
+    const course = await this.getOrganizationCourse(user, courseId);
     if (course.status !== 'published') {
       throw new BadRequestException('Сначала опубликуйте курс');
     }
-    const employee = this.database.get(
+    const employee = await this.database.get(
       `SELECT id FROM users
        WHERE id = ? AND organization_id = ? AND role = 'employee'`,
       [employeeId, user.organizationId],
     );
     if (!employee) throw new NotFoundException('Сотрудник не найден');
 
-    const existing = this.database.get<EnrollmentRecord>(
+    const existing = await this.database.get<EnrollmentRecord>(
       'SELECT id, status FROM enrollments WHERE course_id = ? AND user_id = ?',
       [courseId, employeeId],
     );
     if (existing) return { enrollmentId: existing.id, status: existing.status };
 
     const enrollmentId = randomUUID();
-    this.database.run(
+    await this.database.run(
       `INSERT INTO enrollments (id, course_id, user_id, assigned_by, assigned_at)
        VALUES (?, ?, ?, ?, ?)`,
       [enrollmentId, courseId, employeeId, user.id, new Date().toISOString()],
@@ -487,11 +518,14 @@ export class CoursesService {
     return { enrollmentId, status: 'in_progress' };
   }
 
-  getCourse(user: AuthUser, courseId: string): Record<string, unknown> {
-    const course = this.getOrganizationCourse(user, courseId);
+  async getCourse(
+    user: AuthUser,
+    courseId: string,
+  ): Promise<Record<string, unknown>> {
+    const course = await this.getOrganizationCourse(user, courseId);
     let enrollment: EnrollmentRecord | undefined;
     if (user.role === 'employee') {
-      enrollment = this.database.get<EnrollmentRecord>(
+      enrollment = await this.database.get<EnrollmentRecord>(
         'SELECT id, status FROM enrollments WHERE course_id = ? AND user_id = ?',
         [courseId, user.id],
       );
@@ -500,7 +534,7 @@ export class CoursesService {
       }
     }
 
-    const lessons = this.database.all<LessonRecord>(
+    const lessons = await this.database.all<LessonRecord>(
       `SELECT l.id, l.title, l.content, l.video_url, l.position,
               lp.completed_at
        FROM lessons l
@@ -509,20 +543,20 @@ export class CoursesService {
        WHERE l.course_id = ? ORDER BY l.position`,
       [enrollment?.id ?? null, courseId],
     );
-    const questions = this.database.all<QuestionRecord>(
+    const questions = await this.database.all<QuestionRecord>(
       `SELECT id, prompt, options_json, position
        FROM quiz_questions WHERE course_id = ? ORDER BY position`,
       [courseId],
     );
     const latestAttempt = enrollment
-      ? this.database.get<DatabaseRow>(
+      ? await this.database.get<DatabaseRow>(
           `SELECT score, passed, submitted_at, answers_json FROM quiz_attempts
-           WHERE enrollment_id = ? ORDER BY submitted_at DESC, rowid DESC LIMIT 1`,
+           WHERE enrollment_id = ? ORDER BY submitted_at DESC, attempt_order DESC LIMIT 1`,
           [enrollment.id],
         )
       : undefined;
     const savedAnswers = enrollment
-      ? this.database.all<DatabaseRow>(
+      ? await this.database.all<DatabaseRow>(
           `SELECT question_id, selected_option_index FROM quiz_progress
            WHERE enrollment_id = ?`,
           [enrollment.id],
@@ -530,15 +564,20 @@ export class CoursesService {
       : [];
     const answers: Record<string, number> = {};
     if (latestAttempt?.answers_json) {
-      const previousAnswers: unknown = JSON.parse(String(latestAttempt.answers_json));
+      const previousAnswers: unknown = JSON.parse(
+        String(latestAttempt.answers_json),
+      );
       if (isRecord(previousAnswers)) {
         Object.entries(previousAnswers).forEach(([questionId, optionIndex]) => {
-          if (typeof optionIndex === 'number') answers[questionId] = optionIndex;
+          if (typeof optionIndex === 'number')
+            answers[questionId] = optionIndex;
         });
       }
     }
     savedAnswers.forEach((answer) => {
-      answers[String(answer.question_id)] = Number(answer.selected_option_index);
+      answers[String(answer.question_id)] = Number(
+        answer.selected_option_index,
+      );
     });
 
     return {
@@ -548,12 +587,12 @@ export class CoursesService {
       status: course.status,
       passingScore: course.passing_score,
       skillId: course.skill_id,
-      skillIds: this.database
-        .all<DatabaseRow>(
+      skillIds: (
+        await this.database.all<DatabaseRow>(
           'SELECT skill_id FROM course_skills WHERE course_id = ?',
           [courseId],
         )
-        .map((row) => String(row.skill_id)),
+      ).map((row) => String(row.skill_id)),
       lessons: lessons.map((lesson) => ({
         id: lesson.id,
         title: lesson.title,
@@ -583,30 +622,32 @@ export class CoursesService {
     };
   }
 
-  setLessonStudied(
+  async setLessonStudied(
     user: AuthUser,
     courseId: string,
     lessonId: string,
     studied: unknown,
-  ): { studied: boolean } {
+  ): Promise<{ studied: boolean }> {
     if (typeof studied !== 'boolean') {
-      throw new BadRequestException('Передайте отметку о прохождении материала');
+      throw new BadRequestException(
+        'Передайте отметку о прохождении материала',
+      );
     }
-    const enrollment = this.getEnrollment(user, courseId);
-    const lesson = this.database.get(
+    const enrollment = await this.getEnrollment(user, courseId);
+    const lesson = await this.database.get(
       'SELECT id FROM lessons WHERE id = ? AND course_id = ?',
       [lessonId, courseId],
     );
     if (!lesson) throw new NotFoundException('Урок не найден');
 
     if (studied) {
-      this.database.run(
-        `INSERT OR IGNORE INTO lesson_progress (id, enrollment_id, lesson_id, completed_at)
-         VALUES (?, ?, ?, ?)`,
+      await this.database.run(
+        `INSERT INTO lesson_progress (id, enrollment_id, lesson_id, completed_at)
+         VALUES (?, ?, ?, ?) ON CONFLICT (enrollment_id, lesson_id) DO NOTHING`,
         [randomUUID(), enrollment.id, lessonId, new Date().toISOString()],
       );
     } else {
-      this.database.run(
+      await this.database.run(
         'DELETE FROM lesson_progress WHERE enrollment_id = ? AND lesson_id = ?',
         [enrollment.id, lessonId],
       );
@@ -614,13 +655,13 @@ export class CoursesService {
     return { studied };
   }
 
-  saveQuizAnswer(
+  async saveQuizAnswer(
     user: AuthUser,
     courseId: string,
     questionId: unknown,
     optionIndex: unknown,
-  ): { answeredCount: number; questionCount: number } {
-    const enrollment = this.getEnrollment(user, courseId);
+  ): Promise<{ answeredCount: number; questionCount: number }> {
+    const enrollment = await this.getEnrollment(user, courseId);
     if (
       typeof questionId !== 'string' ||
       typeof optionIndex !== 'number' ||
@@ -628,7 +669,7 @@ export class CoursesService {
     ) {
       throw new BadRequestException('Выберите вариант ответа');
     }
-    const question = this.database.get<QuestionRecord>(
+    const question = await this.database.get<QuestionRecord>(
       `SELECT id, options_json FROM quiz_questions
        WHERE id = ? AND course_id = ?`,
       [questionId, courseId],
@@ -639,7 +680,7 @@ export class CoursesService {
       throw new BadRequestException('Выберите допустимый вариант ответа');
     }
 
-    this.database.run(
+    await this.database.run(
       `INSERT INTO quiz_progress
        (enrollment_id, question_id, selected_option_index, updated_at)
        VALUES (?, ?, ?, ?)
@@ -648,10 +689,10 @@ export class CoursesService {
          updated_at = excluded.updated_at`,
       [enrollment.id, questionId, optionIndex, new Date().toISOString()],
     );
-    const progress = this.database.get<DatabaseRow>(
+    const progress = await this.database.get<DatabaseRow>(
       `SELECT
-         (SELECT COUNT(*) FROM quiz_questions WHERE course_id = ?) AS question_count,
-         (SELECT COUNT(*) FROM quiz_progress WHERE enrollment_id = ?) AS answered_count`,
+         (SELECT COUNT(*)::integer FROM quiz_questions WHERE course_id = ?) AS question_count,
+         (SELECT COUNT(*)::integer FROM quiz_progress WHERE enrollment_id = ?) AS answered_count`,
       [courseId, enrollment.id],
     );
     return {
@@ -660,34 +701,38 @@ export class CoursesService {
     };
   }
 
-  submitQuiz(
+  async submitQuiz(
     user: AuthUser,
     courseId: string,
     answersValue: unknown,
-  ): { score: number; passed: boolean; passingScore: number; enrollmentStatus: string } {
-    const enrollment = this.getEnrollment(user, courseId);
+  ): Promise<{
+    score: number;
+    passed: boolean;
+    passingScore: number;
+    enrollmentStatus: string;
+  }> {
+    const enrollment = await this.getEnrollment(user, courseId);
     if (!isRecord(answersValue)) {
       throw new BadRequestException('Передайте ответы на тест');
     }
-    const questions = this.database.all<QuestionRecord>(
+    const questions = await this.database.all<QuestionRecord>(
       `SELECT id, options_json, correct_option_index FROM quiz_questions
        WHERE course_id = ? ORDER BY position`,
       [courseId],
     );
-    if (questions.length === 0) throw new BadRequestException('В курсе нет вопросов');
+    if (questions.length === 0)
+      throw new BadRequestException('В курсе нет вопросов');
     if (
-      questions.some(
-        (question) => {
-          const answer = answersValue[question.id];
-          const options = JSON.parse(question.options_json) as string[];
-          return (
-            typeof answer !== 'number' ||
-            !Number.isInteger(answer) ||
-            answer < 0 ||
-            answer >= options.length
-          );
-        },
-      )
+      questions.some((question) => {
+        const answer = answersValue[question.id];
+        const options = JSON.parse(question.options_json) as string[];
+        return (
+          typeof answer !== 'number' ||
+          !Number.isInteger(answer) ||
+          answer < 0 ||
+          answer >= options.length
+        );
+      })
     ) {
       throw new BadRequestException('Ответьте на все вопросы теста');
     }
@@ -698,12 +743,12 @@ export class CoursesService {
       0,
     );
     const score = Math.round((correctCount / questions.length) * 100);
-    const course = this.getOrganizationCourse(user, courseId);
+    const course = await this.getOrganizationCourse(user, courseId);
     const passed = score >= course.passing_score;
     let enrollmentStatus = enrollment.status;
-    this.database.transaction(() => {
-      questions.forEach((question) => {
-        this.database.run(
+    await this.database.transaction(async (transaction) => {
+      for (const question of questions) {
+        await transaction.run(
           `INSERT INTO quiz_progress
            (enrollment_id, question_id, selected_option_index, updated_at)
            VALUES (?, ?, ?, ?)
@@ -717,8 +762,8 @@ export class CoursesService {
             new Date().toISOString(),
           ],
         );
-      });
-      this.database.run(
+      }
+      await transaction.run(
         `INSERT INTO quiz_attempts (id, enrollment_id, score, passed, answers_json, submitted_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
@@ -730,14 +775,24 @@ export class CoursesService {
           new Date().toISOString(),
         ],
       );
-      enrollmentStatus = this.updateCompletion(user, enrollment.id, courseId);
+      enrollmentStatus = await this.updateCompletion(
+        user,
+        enrollment.id,
+        courseId,
+        transaction,
+      );
     });
-    return { score, passed, passingScore: course.passing_score, enrollmentStatus };
+    return {
+      score,
+      passed,
+      passingScore: course.passing_score,
+      enrollmentStatus,
+    };
   }
 
-  dashboard(user: AuthUser): Record<string, unknown> {
+  async dashboard(user: AuthUser): Promise<Record<string, unknown>> {
     if (user.role === 'employee') {
-      const skills = this.database.all<DatabaseRow>(
+      const skills = await this.database.all<DatabaseRow>(
         `SELECT s.id, s.name, s.description, us.source, us.confirmed_at
          FROM user_skills us
          JOIN skills s ON s.id = us.skill_id
@@ -745,41 +800,47 @@ export class CoursesService {
          ORDER BY us.confirmed_at DESC`,
         [user.id, user.organizationId],
       );
-      return { courses: this.listCourses(user), skills };
+      return { courses: await this.listCourses(user), skills };
     }
 
-    const courses = this.listCourses(user).map((course) => ({
-      ...course,
-      employees: this.database.all<DatabaseRow>(
+    const courses = await this.listCourses(user);
+    const courseDetails: Array<Record<string, unknown>> = [];
+    for (const course of courses) {
+      const employees = await this.database.all<DatabaseRow>(
         `SELECT u.id, u.name, u.email, e.status,
-                (SELECT COUNT(*) FROM quiz_questions q
+                (SELECT COUNT(*)::integer FROM quiz_questions q
                  WHERE q.course_id = c.id) AS question_count,
                 CASE WHEN e.status = 'completed' THEN
-                  (SELECT COUNT(*) FROM quiz_questions q
+                  (SELECT COUNT(*)::integer FROM quiz_questions q
                    WHERE q.course_id = c.id)
                 ELSE
-                  (SELECT COUNT(*) FROM quiz_progress qp
+                  (SELECT COUNT(*)::integer FROM quiz_progress qp
                    WHERE qp.enrollment_id = e.id)
                 END AS answered_count,
                 (SELECT score FROM quiz_attempts qa
                  WHERE qa.enrollment_id = e.id
-                 ORDER BY qa.submitted_at DESC, qa.rowid DESC LIMIT 1) AS latest_score
+                 ORDER BY qa.submitted_at DESC, qa.attempt_order DESC LIMIT 1) AS latest_score
          FROM enrollments e
          JOIN users u ON u.id = e.user_id
          JOIN courses c ON c.id = e.course_id
          WHERE e.course_id = ? AND c.organization_id = ?`,
         [course.id, user.organizationId],
-      ),
-    }));
+      );
+      courseDetails.push({ ...course, employees });
+    }
     return {
-      courses,
-      employees: this.listEmployees(user),
-      skills: this.listSkills(user),
+      courses: courseDetails,
+      employees: await this.listEmployees(user),
+      skills: await this.listSkills(user),
     };
   }
 
-  private getOrganizationCourse(user: AuthUser, courseId: string): CourseRecord {
-    const course = this.database.get<CourseRecord>(
+  private async getOrganizationCourse(
+    user: AuthUser,
+    courseId: string,
+    database: DatabaseExecutor = this.database,
+  ): Promise<CourseRecord> {
+    const course = await database.get<CourseRecord>(
       `SELECT id, organization_id, skill_id, title, description, passing_score, status
        FROM courses WHERE id = ? AND organization_id = ?`,
       [courseId, user.organizationId],
@@ -788,8 +849,11 @@ export class CoursesService {
     return course;
   }
 
-  private getEnrollment(user: AuthUser, courseId: string): EnrollmentRecord {
-    const enrollment = this.database.get<EnrollmentRecord>(
+  private async getEnrollment(
+    user: AuthUser,
+    courseId: string,
+  ): Promise<EnrollmentRecord> {
+    const enrollment = await this.database.get<EnrollmentRecord>(
       `SELECT e.id, e.status FROM enrollments e
        JOIN courses c ON c.id = e.course_id
        WHERE e.course_id = ? AND e.user_id = ? AND c.organization_id = ?
@@ -800,35 +864,41 @@ export class CoursesService {
     return enrollment;
   }
 
-  private updateCompletion(
+  private async updateCompletion(
     user: AuthUser,
     enrollmentId: string,
     courseId: string,
-  ): string {
-    const latestAttempt = this.database.get<DatabaseRow>(
+    transaction: DatabaseExecutor,
+  ): Promise<string> {
+    const latestAttempt = await transaction.get<DatabaseRow>(
       `SELECT passed FROM quiz_attempts
-       WHERE enrollment_id = ? ORDER BY submitted_at DESC, rowid DESC LIMIT 1`,
+       WHERE enrollment_id = ? ORDER BY submitted_at DESC, attempt_order DESC LIMIT 1`,
       [enrollmentId],
     );
-    const course = this.getOrganizationCourse(user, courseId);
+    const course = await this.getOrganizationCourse(
+      user,
+      courseId,
+      transaction,
+    );
     const completed = Number(latestAttempt?.passed ?? 0) === 1;
 
     if (completed) {
-      this.database.run(
+      await transaction.run(
         "UPDATE enrollments SET status = 'completed' WHERE id = ?",
         [enrollmentId],
       );
-      const linkedSkills = this.database.all<SkillRecord>(
+      const linkedSkills = await transaction.all<SkillRecord>(
         `SELECT s.id, s.name, s.description FROM course_skills cs
          JOIN skills s ON s.id = cs.skill_id
          WHERE cs.course_id = ? AND s.organization_id = ?`,
         [courseId, user.organizationId],
       );
-      linkedSkills.forEach((skill) => {
-        this.database.run(
-          `INSERT OR IGNORE INTO user_skills
+      for (const skill of linkedSkills) {
+        await transaction.run(
+          `INSERT INTO user_skills
            (id, organization_id, user_id, skill_id, status, source, confirmed_at)
-           VALUES (?, ?, ?, ?, 'confirmed', ?, ?)`,
+           VALUES (?, ?, ?, ?, 'confirmed', ?, ?)
+           ON CONFLICT (user_id, skill_id) DO NOTHING`,
           [
             randomUUID(),
             user.organizationId,
@@ -838,10 +908,10 @@ export class CoursesService {
             new Date().toISOString(),
           ],
         );
-      });
+      }
     }
 
-    const enrollment = this.database.get<EnrollmentRecord>(
+    const enrollment = await transaction.get<EnrollmentRecord>(
       'SELECT id, status FROM enrollments WHERE id = ?',
       [enrollmentId],
     );

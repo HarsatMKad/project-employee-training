@@ -1,58 +1,84 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { DatabaseSync, SQLInputValue } from 'node:sqlite';
+import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { hashPassword } from '../security/security.js';
 
+type DatabaseValue = string | number | boolean | Uint8Array | null | undefined;
+
 export interface DatabaseRow {
-  [column: string]: string | number | bigint | Uint8Array | null | undefined;
+  [column: string]: DatabaseValue;
+}
+
+export interface DatabaseExecutor {
+  get<T extends DatabaseRow>(
+    sql: string,
+    params?: DatabaseValue[],
+  ): Promise<T | undefined>;
+  all<T extends DatabaseRow>(
+    sql: string,
+    params?: DatabaseValue[],
+  ): Promise<T[]>;
+  run(sql: string, params?: DatabaseValue[]): Promise<void>;
+}
+
+function createExecutor(
+  query: (
+    sql: string,
+    params: DatabaseValue[],
+  ) => Promise<{ rows: QueryResultRow[] }>,
+): DatabaseExecutor {
+  const execute = (sql: string, params: DatabaseValue[] = []) => {
+    let parameterIndex = 0;
+    return query(
+      sql.replace(/\?/g, () => `$${++parameterIndex}`),
+      params,
+    );
+  };
+
+  return {
+    async get<T extends DatabaseRow>(
+      sql: string,
+      params: DatabaseValue[] = [],
+    ) {
+      const result = await execute(sql, params);
+      return result.rows[0] as T | undefined;
+    },
+    async all<T extends DatabaseRow>(
+      sql: string,
+      params: DatabaseValue[] = [],
+    ) {
+      const result = await execute(sql, params);
+      return result.rows as T[];
+    },
+    async run(sql: string, params: DatabaseValue[] = []) {
+      await execute(sql, params);
+    },
+  };
 }
 
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
-  private readonly database: DatabaseSync;
+  private readonly pool: Pool;
+  private readonly executor: DatabaseExecutor;
 
-  constructor(databasePath?: string) {
-    const path = databasePath ?? process.env.DB_PATH ?? resolve('data', 'training.sqlite');
-    if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true });
-
-    this.database = new DatabaseSync(path);
-    this.database.exec('PRAGMA foreign_keys = ON');
-    this.createSchema();
-    this.seedDemoData();
-  }
-
-  get<T extends DatabaseRow>(sql: string, params: SQLInputValue[] = []): T | undefined {
-    return this.database.prepare(sql).get(...params) as T | undefined;
-  }
-
-  all<T extends DatabaseRow>(sql: string, params: SQLInputValue[] = []): T[] {
-    return this.database.prepare(sql).all(...params) as T[];
-  }
-
-  run(sql: string, params: SQLInputValue[] = []): void {
-    this.database.prepare(sql).run(...params);
-  }
-
-  transaction<T>(callback: () => T): T {
-    this.database.exec('BEGIN IMMEDIATE');
-    try {
-      const result = callback();
-      this.database.exec('COMMIT');
-      return result;
-    } catch (error) {
-      this.database.exec('ROLLBACK');
-      throw error;
+  constructor(pool?: Pool) {
+    if (pool) {
+      this.pool = pool;
+    } else {
+      const connectionString = process.env.DATABASE_URL;
+      if (!connectionString) {
+        throw new Error('DATABASE_URL must be set to connect to PostgreSQL');
+      }
+      this.pool = new Pool({ connectionString });
     }
+
+    this.executor = createExecutor((sql, params) =>
+      this.pool.query(sql, params as DatabaseValue[]),
+    );
   }
 
-  onModuleDestroy(): void {
-    this.database.close();
-  }
-
-  private createSchema(): void {
-    this.database.exec(`
+  async initialize(): Promise<void> {
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS organizations (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL
@@ -125,12 +151,17 @@ export class DatabaseService implements OnModuleDestroy {
       );
       CREATE TABLE IF NOT EXISTS quiz_attempts (
         id TEXT PRIMARY KEY,
+        attempt_order BIGINT GENERATED ALWAYS AS IDENTITY,
         enrollment_id TEXT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
         score INTEGER NOT NULL,
         passed INTEGER NOT NULL,
         answers_json TEXT NOT NULL,
         submitted_at TEXT NOT NULL
       );
+      ALTER TABLE quiz_attempts
+        ADD COLUMN IF NOT EXISTS attempt_order BIGINT GENERATED ALWAYS AS IDENTITY;
+      CREATE UNIQUE INDEX IF NOT EXISTS quiz_attempts_attempt_order_idx
+        ON quiz_attempts (attempt_order);
       CREATE TABLE IF NOT EXISTS quiz_progress (
         enrollment_id TEXT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
         question_id TEXT NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
@@ -148,32 +179,61 @@ export class DatabaseService implements OnModuleDestroy {
         confirmed_at TEXT NOT NULL,
         UNIQUE (user_id, skill_id)
       );
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS department TEXT NOT NULL DEFAULT 'отдел1';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS company_role TEXT NOT NULL DEFAULT 'сотрудник';
+      INSERT INTO course_skills (course_id, skill_id)
+      SELECT id, skill_id FROM courses WHERE skill_id IS NOT NULL
+      ON CONFLICT (course_id, skill_id) DO NOTHING;
     `);
-    const userColumns = this.database
-      .prepare('PRAGMA table_info(users)')
-      .all() as Array<{ name: string }>;
-    if (!userColumns.some((column) => column.name === 'department')) {
-      this.database.exec(
-        "ALTER TABLE users ADD COLUMN department TEXT NOT NULL DEFAULT 'отдел1'",
-      );
-    }
-    if (!userColumns.some((column) => column.name === 'company_role')) {
-      this.database.exec(
-        "ALTER TABLE users ADD COLUMN company_role TEXT NOT NULL DEFAULT 'сотрудник'",
-      );
-    }
-    this.database.exec(`
-      INSERT OR IGNORE INTO course_skills (course_id, skill_id)
-      SELECT id, skill_id FROM courses WHERE skill_id IS NOT NULL;
-    `);
+    await this.seedDemoData();
   }
 
-  private seedDemoData(): void {
+  get<T extends DatabaseRow>(
+    sql: string,
+    params: DatabaseValue[] = [],
+  ): Promise<T | undefined> {
+    return this.executor.get<T>(sql, params);
+  }
+
+  all<T extends DatabaseRow>(
+    sql: string,
+    params: DatabaseValue[] = [],
+  ): Promise<T[]> {
+    return this.executor.all<T>(sql, params);
+  }
+
+  run(sql: string, params: DatabaseValue[] = []): Promise<void> {
+    return this.executor.run(sql, params);
+  }
+
+  async transaction<T>(
+    callback: (transaction: DatabaseExecutor) => Promise<T>,
+  ): Promise<T> {
+    const client = await this.pool.connect();
+    const transaction = this.createClientExecutor(client);
+    try {
+      await client.query('BEGIN');
+      const result = await callback(transaction);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.pool.end();
+  }
+
+  private createClientExecutor(client: PoolClient): DatabaseExecutor {
+    return createExecutor((sql, params) => client.query(sql, params));
+  }
+
+  private async seedDemoData(): Promise<void> {
     const organizationId = 'demo-organization';
-    const existingOrganization = this.get(
-      'SELECT id FROM organizations WHERE id = ?',
-      [organizationId],
-    );
     const users = [
       {
         id: 'demo-creator',
@@ -241,17 +301,20 @@ export class DatabaseService implements OnModuleDestroy {
       },
     ] as const;
 
-    this.run(
-      'INSERT OR IGNORE INTO organizations (id, name) VALUES (?, ?)',
+    await this.run(
+      'INSERT INTO organizations (id, name) VALUES (?, ?) ON CONFLICT (id) DO NOTHING',
       [organizationId, 'Демо-компания'],
     );
     for (const user of users) {
-      const exists = this.get('SELECT id FROM users WHERE email = ?', [user.email]);
+      const exists = await this.get('SELECT id FROM users WHERE email = ?', [
+        user.email,
+      ]);
       if (!exists) {
-        this.run(
+        await this.run(
           `INSERT INTO users
            (id, organization_id, name, email, password_hash, role, department, company_role)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (email) DO NOTHING`,
           [
             user.id,
             organizationId,
@@ -269,22 +332,20 @@ export class DatabaseService implements OnModuleDestroy {
         );
       }
     }
-    this.run(
+    await this.run(
       `UPDATE users SET department = ?, company_role = ?
        WHERE id = 'demo-employee' AND organization_id = ?`,
       ['отдел1', 'сотрудник', organizationId],
     );
-    if (!existingOrganization) {
-      this.run(
-        `INSERT OR IGNORE INTO skills (id, organization_id, name, description)
-         VALUES (?, ?, ?, ?)`,
-        [
-          'demo-skill',
-          organizationId,
-          'Основы работы с клиентом',
-          'Базовые принципы общения и обработки запросов клиентов.',
-        ],
-      );
-    }
+    await this.run(
+      `INSERT INTO skills (id, organization_id, name, description)
+       VALUES (?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`,
+      [
+        'demo-skill',
+        organizationId,
+        'Основы работы с клиентом',
+        'Базовые принципы общения и обработки запросов клиентов.',
+      ],
+    );
   }
 }

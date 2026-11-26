@@ -1,6 +1,11 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService, DatabaseRow } from '../database/database.service.js';
-import { AuthUser, UserRole, signSessionToken, verifyPassword } from '../security/security.js';
+import {
+  AuthUser,
+  UserRole,
+  signSessionToken,
+  verifyPassword,
+} from '../security/security.js';
 
 interface UserRecord extends DatabaseRow {
   id: string;
@@ -15,8 +20,11 @@ interface UserRecord extends DatabaseRow {
 export class AuthService {
   constructor(private readonly database: DatabaseService) {}
 
-  login(email: string, password: string): { user: AuthUser; token: string } {
-    const user = this.database.get<UserRecord>(
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{ user: AuthUser; token: string }> {
+    const user = await this.database.get<UserRecord>(
       `SELECT id, email, name, password_hash, role, organization_id
        FROM users WHERE email = ?`,
       [email.trim().toLowerCase()],

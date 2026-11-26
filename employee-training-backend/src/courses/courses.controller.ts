@@ -7,7 +7,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard, CurrentUser, Roles, RolesGuard } from '../auth/auth.guard.js';
+import {
+  AuthGuard,
+  CurrentUser,
+  Roles,
+  RolesGuard,
+} from '../auth/auth.guard.js';
 import { CoursesService } from './courses.service.js';
 import type { AuthUser } from '../security/security.js';
 
@@ -17,12 +22,12 @@ export class CoursesController {
   constructor(private readonly coursesService: CoursesService) {}
 
   @Get('dashboard')
-  dashboard(@CurrentUser() user: AuthUser): Record<string, unknown> {
+  dashboard(@CurrentUser() user: AuthUser): Promise<Record<string, unknown>> {
     return this.coursesService.dashboard(user);
   }
 
   @Get('skills')
-  skills(@CurrentUser() user: AuthUser): unknown[] {
+  skills(@CurrentUser() user: AuthUser): Promise<unknown[]> {
     return this.coursesService.listSkills(user);
   }
 
@@ -31,7 +36,7 @@ export class CoursesController {
   createSkill(
     @CurrentUser() user: AuthUser,
     @Body() body: unknown,
-  ): { id: string; name: string; description: string } {
+  ): Promise<{ id: string; name: string; description: string }> {
     return this.coursesService.createSkill(user, body);
   }
 
@@ -40,18 +45,18 @@ export class CoursesController {
   deleteSkill(
     @CurrentUser() user: AuthUser,
     @Param('skillId') skillId: string,
-  ): { success: true } {
+  ): Promise<{ success: true }> {
     return this.coursesService.deleteSkill(user, skillId);
   }
 
   @Get('employees')
   @Roles('creator')
-  employees(@CurrentUser() user: AuthUser): unknown[] {
+  employees(@CurrentUser() user: AuthUser): Promise<unknown[]> {
     return this.coursesService.listEmployees(user);
   }
 
   @Get('courses')
-  courses(@CurrentUser() user: AuthUser): unknown[] {
+  courses(@CurrentUser() user: AuthUser): Promise<unknown[]> {
     return this.coursesService.listCourses(user);
   }
 
@@ -60,7 +65,7 @@ export class CoursesController {
   createCourse(
     @CurrentUser() user: AuthUser,
     @Body() body: unknown,
-  ): { id: string; status: string } {
+  ): Promise<{ id: string; status: string }> {
     return this.coursesService.createCourse(user, body);
   }
 
@@ -69,7 +74,7 @@ export class CoursesController {
   publishCourse(
     @CurrentUser() user: AuthUser,
     @Param('courseId') courseId: string,
-  ): { id: string; status: string } {
+  ): Promise<{ id: string; status: string }> {
     return this.coursesService.publishCourse(user, courseId);
   }
 
@@ -79,7 +84,7 @@ export class CoursesController {
     @CurrentUser() user: AuthUser,
     @Param('courseId') courseId: string,
     @Body() body: { employeeId?: unknown },
-  ): { enrollmentId: string; status: string } {
+  ): Promise<{ enrollmentId: string; status: string }> {
     return this.coursesService.assignCourse(user, courseId, body?.employeeId);
   }
 
@@ -87,7 +92,7 @@ export class CoursesController {
   course(
     @CurrentUser() user: AuthUser,
     @Param('courseId') courseId: string,
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     return this.coursesService.getCourse(user, courseId);
   }
 
@@ -98,7 +103,7 @@ export class CoursesController {
     @Param('courseId') courseId: string,
     @Param('lessonId') lessonId: string,
     @Body() body: { studied?: unknown },
-  ): { studied: boolean } {
+  ): Promise<{ studied: boolean }> {
     return this.coursesService.setLessonStudied(
       user,
       courseId,
@@ -113,7 +118,7 @@ export class CoursesController {
     @CurrentUser() user: AuthUser,
     @Param('courseId') courseId: string,
     @Body() body: { questionId?: unknown; optionIndex?: unknown },
-  ): { answeredCount: number; questionCount: number } {
+  ): Promise<{ answeredCount: number; questionCount: number }> {
     return this.coursesService.saveQuizAnswer(
       user,
       courseId,
@@ -128,12 +133,12 @@ export class CoursesController {
     @CurrentUser() user: AuthUser,
     @Param('courseId') courseId: string,
     @Body() body: { answers?: unknown },
-  ): {
+  ): Promise<{
     score: number;
     passed: boolean;
     passingScore: number;
     enrollmentStatus: string;
-  } {
+  }> {
     return this.coursesService.submitQuiz(user, courseId, body?.answers);
   }
 }

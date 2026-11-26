@@ -28,10 +28,10 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
-  login(
+  async login(
     @Body() body: LoginBody,
     @Res({ passthrough: true }) response: Response,
-  ): { user: AuthUser } {
+  ): Promise<{ user: AuthUser }> {
     if (
       typeof body?.email !== 'string' ||
       typeof body.password !== 'string' ||
@@ -41,7 +41,7 @@ export class AuthController {
       throw new BadRequestException('Укажите почту и пароль');
     }
 
-    const session = this.authService.login(body.email, body.password);
+    const session = await this.authService.login(body.email, body.password);
     response.setHeader('Set-Cookie', sessionCookie(session.token));
     return { user: session.user };
   }
@@ -55,6 +55,6 @@ export class AuthController {
   @Get('session')
   session(@Req() request: Request): { user: AuthUser | null } {
     const token = getCookieValue(request.headers.cookie, SESSION_COOKIE);
-    return { user: token ? verifySessionToken(token) ?? null : null };
+    return { user: token ? (verifySessionToken(token) ?? null) : null };
   }
 }
